@@ -51,7 +51,7 @@ def validate(
 
             subnet = supernet.get_active_subnet()
             subnet_cfg = supernet.get_active_subnet_settings()
-            subnet.cuda(args.gpu)
+            subnet.cuda() #args.gpu)
 
             if bn_calibration:
                 subnet.eval()
@@ -64,7 +64,7 @@ def validate(
                         break
                     if getattr(args, 'use_clean_images_for_subnet_training', False):
                         _, images = images
-                    images = images.cuda(args.gpu, non_blocking=True)
+                    images = images.cuda(non_blocking=True) #args.gpu, non_blocking=True)
                     subnet(images)  #forward only
 
             acc1, acc5, loss, flops, params = validate_one_subnet(

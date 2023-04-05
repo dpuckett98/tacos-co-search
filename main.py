@@ -1,3 +1,5 @@
+import pickle
+
 from test_wrappers import AccelWrapperTest, AlgWrapperTest
 from NASViT_wrapper import NASViTWrapper
 from fast_arch_wrapper import FastArchWrapper
@@ -31,9 +33,9 @@ def run_random_search(accel, alg, calc_score, iterations, latency_boxes):
 		for idx, (mi, ma) in enumerate(latency_boxes):
 			if latency >= mi and latency <= ma:
 				# if it's the high score, mark it
-				if boxes[idx] == None or boxes[idx][0] < score:
+				if boxes[idx][0] == None or boxes[idx][0] < score:
 					boxes[idx] = [score, model_config, hw_config, params, accuracy, flops, latency, power]
-					print("Best score in box" idx, ":", mi, "-", ma)
+					print("Best score in box", idx, ":", mi, "-", ma)
 				break
 		
 		
@@ -61,7 +63,7 @@ if __name__ == "__main__":
 	
 	latency_boxes = []
 	num_PEs = 512
-	util = .8
+	util = .6
 	clock_speed = 500000000
 	for (mi, ma) in flops_boxes:
 		ideal_min = mi * 1000000 / (num_PEs*util)
@@ -69,4 +71,8 @@ if __name__ == "__main__":
 		latency_boxes.append([ideal_min / clock_speed, ideal_max / clock_speed])
 	#print(latency_boxes)
 	
-	print(run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 2, latency_boxes))
+	boxes = run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 50, latency_boxes)
+
+	print(boxes)
+	with open("first_res.pickle", 'wb') as out_file:
+		pickle.dump(boxes, out_file, pickle.HIGHEST_PROTOCOL)

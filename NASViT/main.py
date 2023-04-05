@@ -438,7 +438,7 @@ def start():
 	
 	# create model
 	model = models.model_factory.create_model(config)
-	#model.cuda()
+	model.cuda()
 	logger.info(str(model))
 	dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
 	
