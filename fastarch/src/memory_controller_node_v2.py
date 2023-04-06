@@ -7,7 +7,8 @@ class MemoryControllerNode(Node):
 	# DRAM ports are called "DRAM_in" and "DRAM_out"
 	# the number and name of on-chip ports are given in "input_port_names" and "output_port_names"
 	# share_load is "A" if elements of A are loaded by each PE lane, "B" if elements of B are loaded by each PE lane, and "None" if there is no shared loading
-	def __init__(self, name, off_chip_bandwidth, on_chip_bandwidth, input_port_names, output_port_names, share_load="None", num_PE_lanes=1, load_immediate=False, store_immediate=False):
+	# if target_size == -1, then switch off between giving priority to loading and storing; otherwise, if the current amount stored is less than the target size, it prioritizes loading, and if the current amount stored is greater than the target size, it prioritizes storing
+	def __init__(self, name, off_chip_bandwidth, on_chip_bandwidth, input_port_names, output_port_names, share_load="None", num_PE_lanes=1, load_immediate=False, store_immediate=False, target_size=-1, initial_size=0):
 		# create ports & initialize node
 		input_ports = [Port(name, False, False, on_chip_bandwidth) for name in input_port_names]
 		output_ports = [Port(name, True, False, on_chip_bandwidth) for name in output_port_names]
@@ -23,8 +24,13 @@ class MemoryControllerNode(Node):
 		
 		self.load_immediate = load_immediate
 		self.store_immediate = store_immediate
+		self.target_size = target_size
 		
 		self.chunks = {} # chunk name to chunk object
+		
+		# add output chunk
+		if initial_size > 0:
+			self.add_chunk("Last Comps Data", initial_size, False, False, False, 1)
 		
 		self.DRAM_in_chunk = None
 		self.DRAM_out_chunk = None
@@ -36,6 +42,7 @@ class MemoryControllerNode(Node):
 		self.save_chunk_requests = [] # list of chunk names
 		
 		# buffer data
+		self.current_size = initial_size
 		self.min_buffer_size = 0
 		self.min_buffer_banks = 0
 		
@@ -55,6 +62,18 @@ class MemoryControllerNode(Node):
 		self.set_flag("idle", "False")
 		
 		self.in_turn = True
+	
+	def get_offload_size(self):
+		res = 0
+		for name in self.chunks:
+			if name[0] == 'O' or name == "Last Comps Data":
+				res += self.chunks[name].current_size
+		return res
+	
+	# called when the preloading is finished
+	def finish_preload(self):
+		if "Last Comps Data" in self.chunks:
+			self.give_save_chunk_request("Last Comps Data")
 	
 	# adds a chunk with the following parameters if it exists
 	def add_chunk(self, chunk_name, size, source_is_dram=True, remove_on_read=False, cap_size=False, transfer_scale=1):
@@ -192,6 +211,12 @@ class MemoryControllerNode(Node):
 					chunk.make_full()
 		
 		if not self.ports["DRAM_in"].is_current_request() and not self.ports["DRAM_out"].is_current_request():
+			if self.target_size != -1:
+				if self.current_size < self.target_size:
+					self.in_turn = True
+				else:
+					self.in_turn = False
+			
 			if self.in_turn:
 				
 				# first check any input requests
@@ -295,7 +320,8 @@ class MemoryControllerNode(Node):
 								total_size += chunk.max_size * chunk.transfer_scale
 					self.ports["DRAM_in"].act(total_size, current_cycle)
 			
-			self.in_turn = not self.in_turn
+			if self.target_size == -1:
+				self.in_turn = not self.in_turn
 		
 		'''
 		# v2
@@ -427,11 +453,11 @@ class MemoryControllerNode(Node):
 				self.set_flag("idle", "False")
 		
 		# track max size
-		current_size = 0
+		self.current_size = 0
 		for name, chunk in self.chunks.items():
-			current_size += chunk.current_size
-		if current_size > self.min_buffer_size:
-			self.min_buffer_size = current_size
+			self.current_size += chunk.current_size
+		if self.current_size > self.min_buffer_size:
+			self.min_buffer_size = self.current_size
 		
 		# track ideal bandwidth utilization
 		self.ideal_input_bandwidth_used += self.off_chip_bandwidth

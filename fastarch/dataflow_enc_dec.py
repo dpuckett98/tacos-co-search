@@ -1,12 +1,12 @@
 import numpy as np
 import math
 
-from .src.types import Node, connect, StateMachine, Port
-from .src.buffer_node import BufferNode
-from .src.dram_node import DRAMNode
-from .src.complex_PE_node import ComplexPENode
-from .src.memory_controller_node_v2 import MemoryControllerNode
-from .src.controller import run_system
+from fastarch.src.types import Node, connect, StateMachine, Port
+from fastarch.src.buffer_node import BufferNode
+from fastarch.src.dram_node import DRAMNode
+from fastarch.src.complex_PE_node import ComplexPENode
+from fastarch.src.memory_controller_node_v2 import MemoryControllerNode
+from fastarch.src.controller import run_system
 
 # TODO
 # (optimization): Start loading data for the next tile once the current tile is finished (remove "idle" cycles)
@@ -25,7 +25,7 @@ from .src.controller import run_system
 # preload_cycles and pipeline_offloading assume that you're running lots of matrix multiplications back to back and you can preload inputs at the end of the previous matrix multiplication and offload outputs at the beginning of the next matrix multiplication
 class MMDataflow(StateMachine):
 
-	def __init__(self, num_PEs, num_banks_per_PE, size_banks_per_PE, off_chip_bandwidth, on_chip_bandwidth, A_rows, A_cols_B_rows, B_cols, dataflow, t_a, t_b, t_w, c_a, c_b, c_w, estimate, encode=False, decode=False, orig_heads=-1, comp_heads=-1, sparsity = 0.0, preload_cycles=0, pipeline_offloading=False, share_load="None", num_PE_lanes=1, A_transfer_scale=1, B_transfer_scale=1, O_transfer_scale=1, num_heads=1, load_immediate=False, store_immediate=False, sparse_map=None):
+	def __init__(self, num_PEs, num_banks_per_PE, size_banks_per_PE, off_chip_bandwidth, on_chip_bandwidth, A_rows, A_cols_B_rows, B_cols, dataflow, t_a, t_b, t_w, c_a, c_b, c_w, estimate, encode=False, decode=False, orig_heads=-1, comp_heads=-1, sparsity = 0.0, preload_cycles=0, pipeline_offloading=False, share_load="None", num_PE_lanes=1, A_transfer_scale=1, B_transfer_scale=1, O_transfer_scale=1, num_heads=1, load_immediate=False, store_immediate=False, sparse_map=None, memory_target_size=-1, memory_initial_size=0):
 		# configuration and initialization
 		self.num_PEs = num_PEs
 		self.num_banks_per_PE = num_banks_per_PE
@@ -75,7 +75,7 @@ class MMDataflow(StateMachine):
 		# Memory Controller
 		memory_input_ports = ["in_psums_" + str(i) for i in range(self.num_PEs)]
 		memory_output_ports = [item for i in range(self.num_PEs) for item in ["out_A_" + str(i), "out_B_" + str(i), "out_psums_" + str(i)]]
-		self.memory = MemoryControllerNode("MemoryController", self.off_chip_bandwidth, self.on_chip_bandwidth, memory_input_ports, memory_output_ports, share_load=share_load, num_PE_lanes=num_PE_lanes, load_immediate=load_immediate, store_immediate=store_immediate)
+		self.memory = MemoryControllerNode("MemoryController", self.off_chip_bandwidth, self.on_chip_bandwidth, memory_input_ports, memory_output_ports, share_load=share_load, num_PE_lanes=num_PE_lanes, load_immediate=load_immediate, store_immediate=store_immediate, target_size=memory_target_size)
 		
 		# Connections
 		connect(self.dram, "out", self.memory, "DRAM_in")
@@ -666,6 +666,8 @@ class MMDataflow(StateMachine):
 
 	def update(self, current_cycle):
 		if current_cycle >= self.preload_cycles:
+			if current_cycle == self.preload_cycles:
+				self.memory.finish_preload()
 			# transition from decoding to processing
 			if self.decode and self.mode == "decoding":
 				if (self.current_A_dec_tile == None or self.current_A_dec_tile.finished(self.memory)) and (self.current_B_dec_tile == None or self.current_B_dec_tile.finished(self.memory)):
@@ -781,6 +783,7 @@ class MMDataflow(StateMachine):
 			self.mem_idle_cycles += 1
 			if self.mem_idle_cycles >= 100 and current_cycle < self.preload_cycles:
 				print("Stopped preloading at", current_cycle)
+				self.memory.finish_preload()
 				self.mem_idle_cycles += self.preload_cycles - current_cycle
 				self.preload_cycles = current_cycle
 
@@ -874,13 +877,14 @@ class MMDataflow(StateMachine):
 		print("Utilization:", ideal_cycles / final_cycles * 100, "%")
 		print("Input bandwidth utilization:", self.memory.actual_input_bandwidth_used / self.memory.ideal_input_bandwidth_used * 100, "%")
 		print("Output bandwidth utilization:", self.memory.actual_output_bandwidth_used / self.memory.ideal_output_bandwidth_used * 100, "%")
+		print("Data to be Offloaded:", self.memory.get_offload_size())
 		print("Global Buffer Size:", self.memory.get_min_buffer_size())
 		print("Global Buffer Banks:", self.memory.get_min_buffer_banks())
 		print("Total PE Memory:", self.num_PEs * (self.num_banks_per_PE * self.size_banks_per_PE + (self.num_banks_per_PE / 2) ** 2))
 		self.print_memory_usage()
 	
 	def get_results(self):
-		return [self.total_cycles, self.total_dram_accesses, self.pe_active_cycles, self.memory_active_cycles, self.mem_idle_cycles, self.pe_idle_at_end_cycles]
+		return [self.total_cycles, self.total_dram_accesses, self.pe_active_cycles, self.memory_active_cycles, self.mem_idle_cycles, self.pe_idle_at_end_cycles, self.memory.get_offload_size()]
 
 class Dec_Tile:
 
@@ -1571,9 +1575,9 @@ def optimize_params_2(num_PEs, total_memory, num_banks_per_PE, size_banks_per_PE
 
 # returns total_cycles, utilization, a buffer min size, reads, writes, b buffer min size, reads, writes, o buffer min size, reads, writes, dram accesses, reads, writes
 # PE_config = 0 means PE_width and PE_height are given; PE_config = 1 means PE_width and PE_height are switched
-def run_MM_dataflow(num_PEs, num_RFs_per_PE, size_RF, off_chip_bandwidth, on_chip_bandwidth, max_sram_size, A_rows, A_cols_B_rows, B_cols, dataflow, t_a, t_b, t_w, c_a, c_b, c_w, estimate=False, encode=False, decode=False, orig_heads=-1, comp_heads=-1, sparsity=0.0, preload_cycles=0, pipeline_offloading=False, share_load="None", num_PE_lanes=1, A_transfer_scale=1, B_transfer_scale=1, O_transfer_scale=1, num_heads=1, load_immediate=False, store_immediate=False, sparse_map=None):
+def run_MM_dataflow(num_PEs, num_RFs_per_PE, size_RF, off_chip_bandwidth, on_chip_bandwidth, max_sram_size, A_rows, A_cols_B_rows, B_cols, dataflow, t_a, t_b, t_w, c_a, c_b, c_w, estimate=False, encode=False, decode=False, orig_heads=-1, comp_heads=-1, sparsity=0.0, preload_cycles=0, pipeline_offloading=False, share_load="None", num_PE_lanes=1, A_transfer_scale=1, B_transfer_scale=1, O_transfer_scale=1, num_heads=1, load_immediate=False, store_immediate=False, sparse_map=None, memory_target_size=-1, memory_initial_size=0):
 	
-	state_machine = MMDataflow(num_PEs = num_PEs, num_banks_per_PE = num_RFs_per_PE, size_banks_per_PE = size_RF, off_chip_bandwidth = off_chip_bandwidth, on_chip_bandwidth = on_chip_bandwidth, A_rows = A_rows, A_cols_B_rows = A_cols_B_rows, B_cols = B_cols, dataflow = dataflow, t_a = t_a, t_b = t_b, t_w = t_w, c_a = c_a, c_b = c_b, c_w = c_w, estimate=estimate, encode=encode, decode=decode, orig_heads=orig_heads, comp_heads=comp_heads, sparsity = sparsity, preload_cycles=preload_cycles, pipeline_offloading=pipeline_offloading, share_load=share_load, num_PE_lanes=num_PE_lanes, A_transfer_scale=A_transfer_scale, B_transfer_scale=B_transfer_scale, O_transfer_scale=O_transfer_scale, num_heads=num_heads, load_immediate=load_immediate, store_immediate=store_immediate, sparse_map=sparse_map)
+	state_machine = MMDataflow(num_PEs = num_PEs, num_banks_per_PE = num_RFs_per_PE, size_banks_per_PE = size_RF, off_chip_bandwidth = off_chip_bandwidth, on_chip_bandwidth = on_chip_bandwidth, A_rows = A_rows, A_cols_B_rows = A_cols_B_rows, B_cols = B_cols, dataflow = dataflow, t_a = t_a, t_b = t_b, t_w = t_w, c_a = c_a, c_b = c_b, c_w = c_w, estimate=estimate, encode=encode, decode=decode, orig_heads=orig_heads, comp_heads=comp_heads, sparsity = sparsity, preload_cycles=preload_cycles, pipeline_offloading=pipeline_offloading, share_load=share_load, num_PE_lanes=num_PE_lanes, A_transfer_scale=A_transfer_scale, B_transfer_scale=B_transfer_scale, O_transfer_scale=O_transfer_scale, num_heads=num_heads, load_immediate=load_immediate, store_immediate=store_immediate, sparse_map=sparse_map, memory_target_size=memory_target_size, memory_initial_size=memory_initial_size)
 	
 	#state_machine = MMDataflow(A_buffer_size = params[0], B_buffer_size = params[1], O_buffer_size = params[2], num_PEs = num_PEs, num_banks_per_PE = 10, size_banks_per_PE = 10, off_chip_bandwidth = 100, on_chip_bandwidth = 10, A_rows = A_rows, A_cols_B_rows = A_cols_B_rows, B_cols = B_cols, dataflow = "Output-Stationary", x = params[3], y = params[5], z = params[4])
 

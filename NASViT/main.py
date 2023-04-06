@@ -435,7 +435,6 @@ def start():
 	random.seed(config.SEED)
 	torch.manual_seed(config.SEED)
 	
-	
 	# create model
 	model = models.model_factory.create_model(config)
 	model.cuda()

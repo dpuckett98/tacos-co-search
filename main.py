@@ -63,7 +63,7 @@ if __name__ == "__main__":
 	
 	latency_boxes = []
 	num_PEs = 512
-	util = .6
+	util = .8
 	clock_speed = 500000000
 	for (mi, ma) in flops_boxes:
 		ideal_min = mi * 1000000 / (num_PEs*util)
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 		latency_boxes.append([ideal_min / clock_speed, ideal_max / clock_speed])
 	#print(latency_boxes)
 	
-	boxes = run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 50, latency_boxes)
+	boxes = run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 2, latency_boxes)
 
 	print(boxes)
 	with open("first_res.pickle", 'wb') as out_file:

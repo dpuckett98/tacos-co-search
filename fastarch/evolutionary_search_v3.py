@@ -79,7 +79,7 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 	
 	for i in range(est_iterations):
 		param = generate_random_param(hw, layer)
-		cycles, dram_accesses, _, _ = run_layer(hw, param, layer, estimate=True)
+		cycles, dram_accesses, _, _, _ = run_layer(hw, param, layer, estimate=True)
 		score = cost_function(cycles, dram_accesses)
 		
 		param_list.append(param)
@@ -92,7 +92,7 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 	print("***"*5)
 	
 	# find the best estimates
-	combined = sorted(zip(score_list, param_list, cycles_list, dram_accesses_list, score_list))
+	combined = sorted(zip(score_list, param_list, cycles_list, dram_accesses_list), reverse=True)
 	#print(combined)
 	# rerun the full_iterations best estimates & return the best one
 	best_param = None
@@ -100,25 +100,31 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 	best_dram_accesses = -1
 	best_score = (float('-inf'))
 	
-	for i in range(full_iterations):
-		param = combined[i][1]
-		cycles, dram_accesses, _, _ = run_layer(hw, param, layer, estimate=False)
-		score = cost_function(cycles, dram_accesses)
-		
-		print("***"*5)
-		print("Finished Iteration", i+1, "out of", full_iterations)
-		print("Score:", score)
-		print("Cycles:", cycles)
-		print("Dram Accesses:", dram_accesses)
-		print("***"*5)
-		
-		if score > best_score:
-			print("New best score!!!")
+	if full_iterations > 1:
+		for i in range(full_iterations):
+			param = combined[i][1]
+			cycles, dram_accesses, _, _, _ = run_layer(hw, param, layer, estimate=False)
+			score = cost_function(cycles, dram_accesses)
+			
 			print("***"*5)
-			best_param = param
-			best_cycles = cycles
-			best_dram_accesses = dram_accesses
-			best_score = score
+			print("Finished Iteration", i+1, "out of", full_iterations)
+			print("Score:", score)
+			print("Cycles:", cycles)
+			print("Dram Accesses:", dram_accesses)
+			print("***"*5)
+			
+			if score > best_score:
+				print("New best score!!!")
+				print("***"*5)
+				best_param = param
+				best_cycles = cycles
+				best_dram_accesses = dram_accesses
+				best_score = score
+	else:
+		best_param = combined[0][1]
+		best_cycles = combined[0][2]
+		best_dram_accesses = combined[0][3]
+		best_score = combined[0][0]
 	
 	# for i in range(iterations):
 	
@@ -292,5 +298,6 @@ def test():
 	print(generate_random_param(res[-1], layer_set.layers[0]))
 
 if __name__ == "__main__":
-	model = get_test(1) #get_DeiT_Tiny(1, 0.5, 0.5, 0.9)
-	search_model(model, 2, 2)
+	model = get_LeViT_128(1, 1.0, 1.0, 0.0, ViTCoD=True)
+	#model = get_test(1) #get_DeiT_Tiny(1, 0.5, 0.5, 0.9)
+	search_model(model, 50, 1)
