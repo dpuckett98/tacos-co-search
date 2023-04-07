@@ -2,10 +2,10 @@ import math
 import random
 import numpy as np
 
-from .dataflow_enc_dec import run_MM_dataflow
-import fastarch.build_models_v2 as models
-import fastarch.build_hardware_v2 as hw
-import fastarch.dataflow_estimator as de
+from dataflow_enc_dec import run_MM_dataflow
+import build_models_v2 as models
+import build_hardware_v2 as hw
+import dataflow_estimator as de
 
 # hardware is from build_hardware.py
 # layer is from build_models_v2.py

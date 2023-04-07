@@ -1,12 +1,12 @@
 import numpy as np
 import math
 
-from fastarch.src.types import Node, connect, StateMachine, Port
-from fastarch.src.buffer_node import BufferNode
-from fastarch.src.dram_node import DRAMNode
-from fastarch.src.complex_PE_node import ComplexPENode
-from fastarch.src.memory_controller_node_v2 import MemoryControllerNode
-from fastarch.src.controller import run_system
+from src.types import Node, connect, StateMachine, Port
+from src.buffer_node import BufferNode
+from src.dram_node import DRAMNode
+from src.complex_PE_node import ComplexPENode
+from src.memory_controller_node_v2 import MemoryControllerNode
+from src.controller import run_system
 
 # TODO
 # (optimization): Start loading data for the next tile once the current tile is finished (remove "idle" cycles)

@@ -821,8 +821,8 @@ def NASViT_subnet_to_model(subnet_config, batch_size=1, comp_size_q=1, comp_size
 	
 	# then, for each stage...
 	for stage_id in range(7):
-		print(h, w, c)
-		print(subnet_config["depth"][stage_id])
+		#print(h, w, c)
+		#print(subnet_config["depth"][stage_id])
 		# for each block in stage...
 		for i in range(subnet_config["depth"][stage_id]):
 			# generate an MBConv if it's in one of the first three stages, or if it's the first block in a later stage

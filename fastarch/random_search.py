@@ -4,7 +4,6 @@ import math
 from dataflow_wrapper import run_layer, run_layer_set
 from build_hardware_v2 import Hardware
 from build_models_v2 import LayerSet, model_to_layer_set, get_DeiT_Tiny, get_DeiT_Small, get_DeiT_Base, get_test, get_LeViT_128, get_LeViT_192, get_LeViT_256, create_nasvit_supernet, create_nasvit_smallest
-from random_search import generate_hardware_configs, generate_random_param, evaluate_results, latency_cost
 
 # search function
 # Inputs:
@@ -13,11 +12,9 @@ from random_search import generate_hardware_configs, generate_random_param, eval
 # clock_speed = clock speed in GHz
 # bandwidth = bandwidth in GB/s
 # layer_set = set of layers to be run
-# pool_size = size of the pool
-# mutate_rate = % of the population 
 # iterations = number of iterations to search each layer
 # cost_function = a function that scores a layer based on it's cycles & dram accesses
-def run__evolutionary_search(total_num_PEs, total_memory, clock_speed, bandwidth, layer_set, est_iterations, full_iterations, cost_function):
+def run_search(total_num_PEs, total_memory, clock_speed, bandwidth, layer_set, est_iterations, full_iterations, cost_function):
 
 	hardware_configs = generate_hardware_configs(total_num_PEs, total_memory, clock_speed, bandwidth)
 	
@@ -140,13 +137,13 @@ def generate_hardware_configs(total_num_PEs, total_memory, clock_speed, bandwidt
 	off_chip_bandwidth = bandwidth / 2 / clock_speed
 	on_chip_bandwidth = 100
 
-	min_PE_lanes = 3 # 2^2 = 4
-	max_PE_lanes = 3 # 2^4 = 16
+	min_PE_lanes = 2 # 2^2 = 4
+	max_PE_lanes = 4 # 2^4 = 16
 	min_sram_size = total_memory // 2
-	min_RFs_per_PE = 10
-	soft_max_RFs_per_PE = 10
-	min_elems_per_RF = 10
-	soft_max_elems_per_RF = 10
+	min_RFs_per_PE = 2
+	soft_max_RFs_per_PE = 20
+	min_elems_per_RF = 1
+	soft_max_elems_per_RF = 20
 	max_RFs_per_PE = (total_memory - min_sram_size) // (total_num_PEs * min_elems_per_RF)
 	
 	for i in range(min_PE_lanes, max_PE_lanes+1):
@@ -219,7 +216,7 @@ def generate_random_param(hw, layer, count):
 		
 		c_a = random.randint(1, hw.num_RFs_per_PE - 1)
 		c_b = hw.num_RFs_per_PE - c_a
-		c_w = hw.size_RF
+		c_w = random.randint(1, hw.size_RF)
 		
 		params.append(c_a)
 		params.append(c_b)
