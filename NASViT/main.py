@@ -441,6 +441,11 @@ def start():
 	logger.info(str(model))
 	dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
 	
+	optimizer = build_optimizer(config, model)
+	lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
+	if config.MODEL.RESUME:
+                max_accuracy = load_checkpoint(config, model, optimizer, lr_scheduler, logger)
+
 	return config, model, data_loader_train, data_loader_val
 
 def generate_model(config, model, data_loader_train, data_loader_val):
