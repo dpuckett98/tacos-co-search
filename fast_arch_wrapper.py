@@ -26,19 +26,19 @@ class FastArchWrapper:
 		best_cycles_overall = -1
 		best_dram_accesses_overall = -1
 		
-		for h in range(hw_iters):
+		for h in range(self.hw_iters):
 			hw = random.choice(es.generate_hardware_configs(self.total_num_PEs, self.total_memory, self.clock_speed, self.bandwidth))
 			params = []
 			total_cycles = 0
 			total_dram_accesses = 0
 			
-			for idx, (layer, count) in layer_set.unique_layers:
+			for idx, (layer, count) in enumerate(layer_set.unique_layers):
 				
 				best_param = None
 				best_cycles = -1
 				best_dram_accesses = -1
 				
-				for p in range(param_iters):
+				for p in range(self.param_iters):
 					param = es.generate_random_param(hw, layer)
 					cycles, dram_accesses, _, _, _ = dw.run_layer(hw, param, layer, estimate=True)
 					
@@ -48,8 +48,8 @@ class FastArchWrapper:
 						best_dram_accesses = dram_accesses
 				
 				params.append(best_param)
-				total_cycles += best_cycles
-				total_dram_accesses += best_dram_accesses
+				total_cycles += best_cycles * count
+				total_dram_accesses += best_dram_accesses * count
 			
 			if best_hw == None or total_cycles < best_cycles_overall:
 				best_hw = hw

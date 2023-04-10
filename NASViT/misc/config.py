@@ -46,7 +46,7 @@ _C.MODEL.TYPE = 'vit'
 # Model name
 _C.MODEL.NAME = 'vit'
 # Checkpoint to resume, could be overwritten by command line argument
-_C.MODEL.RESUME = 'ckpt_360.pth'
+_C.MODEL.RESUME = 'NASViT/ckpt_360.pth'
 # Number of classes, overwritten in data preparation
 _C.MODEL.NUM_CLASSES = 1000
 # Dropout rate

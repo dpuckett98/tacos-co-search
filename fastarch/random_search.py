@@ -14,9 +14,11 @@ from build_models_v2 import LayerSet, model_to_layer_set, get_DeiT_Tiny, get_Dei
 # layer_set = set of layers to be run
 # iterations = number of iterations to search each layer
 # cost_function = a function that scores a layer based on it's cycles & dram accesses
-def run_search(total_num_PEs, total_memory, clock_speed, bandwidth, layer_set, est_iterations, full_iterations, cost_function):
+def run_search(total_num_PEs, total_memory, clock_speed, bandwidth, layer_set, hw_iterations, est_iterations, full_iterations, cost_function):
 
 	hardware_configs = generate_hardware_configs(total_num_PEs, total_memory, clock_speed, bandwidth)
+	
+	hardware_configs = random.sample(hardware_configs, hw_iterations)
 	
 	best_hw = None
 	best_params = None
@@ -170,7 +172,7 @@ def generate_random_param(hw, layer, count):
 	for t_a in range(hw.num_PE_lanes, layer.A_rows+1):
 		for t_b in range(1, layer.B_cols+1):
 			min_w = max(1, math.floor((0.9 * hw.total_sram_size - t_a * t_b) / (t_a + t_b)))
-			max_w = math.ceil((hw.total_sram_size - t_a * t_b) / (t_a + t_b))
+			max_w = min(layer.A_cols_B_rows, math.ceil((hw.total_sram_size - t_a * t_b) / (t_a + t_b)))
 			for t_w in range(min_w, max_w + 1):
 				#size = t_a * t_w + t_b * t_w + t_a * t_b
 				# tiling must use at least 90% of the on-chip SRAM, but not more
@@ -186,7 +188,7 @@ def generate_random_param(hw, layer, count):
 			#	if size <= hw.total_sram_size and size >= 0.9 * hw.total_sram_size:
 			#		tiling_choices_rows.append([t_a, t_b, t_w])
 			min_w = max(1, math.floor((0.9 * hw.total_sram_size - t_a * t_b) / (t_a + t_b)))
-			max_w = math.ceil((hw.total_sram_size - t_a * t_b) / (t_a + t_b))
+			max_w = min(layer.A_cols_B_rows, math.ceil((hw.total_sram_size - t_a * t_b) / (t_a + t_b)))
 			for t_w in range(min_w, max_w + 1):
 				tiling_choices_cols.append([t_a, t_b, t_w])
 	
@@ -239,9 +241,9 @@ def evaluate_results(hw, params, layer_set):
 def latency_cost(cycles, dram_accesses):
 	return -cycles
 
-def search_model(model, est_iterations, full_iterations):
+def search_model(model, hw_iterations, est_iterations, full_iterations):
 	layer_set = model_to_layer_set(model)
-	hw, params, cycles, dram_accesses = run_search(512, 320000 // 2, 0.5, 77, layer_set, est_iterations, full_iterations, latency_cost)
+	hw, params, cycles, dram_accesses = run_search(512, 320000 // 2, 0.5, 77, layer_set, hw_iterations, est_iterations, full_iterations, latency_cost)
 	print("***" * 10)
 	
 	#layer_set = evaluate_results(hw, params, layer_set)
@@ -266,6 +268,7 @@ def test():
 	print(generate_random_param(res[-1], layer_set.layers[0]))
 
 if __name__ == "__main__":
-	model = create_nasvit_supernet(1, 1.0, 1.0, 0.0)
+	#model = get_DeiT_Tiny(1, 1.0, 1.0, 0.0)
+	model = get_LeViT_128(1, 1.0, 1.0, 0.0, ViTCoD=True)
 	#model = get_test(1) #get_DeiT_Tiny(1, 0.5, 0.5, 0.9)
-	search_model(model, 50, 1)
+	search_model(model, 2, 5, 1)
