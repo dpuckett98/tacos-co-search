@@ -17,7 +17,7 @@ layer_set = bm.model_to_layer_set(model)
 
 # search parameters
 param_search_iters = 50
-PE_lane_options = [2, 3, 4]
+PE_lane_options = [4, 8, 16]
 num_RFs_options = [i for i in range(2, 21)]
 size_RFs_options = [i for i in range(1, 21)]
 min_sram_size = on_chip_memory // 2
@@ -64,7 +64,7 @@ def mutate_and_eval(entity, mutate_rate):
 	# change size RFs
 	if random.uniform(0, 1) < mutate_rate:
 		max_option = min(max(size_RFs_options), math.floor((on_chip_memory - min_sram_size) / num_PEs / hw_config.num_RFs_per_PE))
-		hw_config.num_RFs_per_PE = random.choice(list(range(1, max_option)))
+		hw_config.size_RF = random.choice(list(range(1, max_option)))
 	
 	# update sram size
 	sram_size = on_chip_memory - num_PEs * hw_config.num_RFs_per_PE * hw_config.size_RF

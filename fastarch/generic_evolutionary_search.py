@@ -15,26 +15,18 @@ def run_evolutionary_search(pool_size, num_generations, growth_rate, mutate_rate
 	print("Generating initial pool of", pool_size, "entities")
 	print("***"*10)
 	pool = [sample_and_eval() for i in range(pool_size)]
-	#fitness_scores = [eval_fitness(p) for p in pool]
 	
 	# for each generation...
 	for g in range(num_generations):
 		print("***"*10)
 		print("Starting generation", g+1, "out of", num_generations)
 		
-		# sort the population by fitness
-		#to_sort = [[i, j] for i, j in zip(fitness_scores, pool)]
-		#res = sorted(to_sort)
-		#fitness_scores = [r[0] for r in res]
-		pool = sorted(pool, key=eval_fitness) #[r[1] for r in res]
+		pool = sorted(pool, key=eval_fitness, reverse=True) #[r[1] for r in res]
 		print("Current best entity:", pool[0])
 		print("***"*10)
 		
 		# mutate the top x%
 		new_entities = [mutate_and_eval(p, mutate_rate) for p in pool[-growth_amt:]]
-		
-		# evaluate the fitness of the mutated top x%
-		new_entities_fitness = [eval_fitness(p) for p in new_entities]
 		
 		# remove the bottom x%
 		del pool[:growth_amt]
@@ -43,5 +35,5 @@ def run_evolutionary_search(pool_size, num_generations, growth_rate, mutate_rate
 		pool = pool + new_entities
 	
 	# sort and return the entire pool
-	pool = sorted(pool, key=eval_fitness)
+	pool = sorted(pool, key=eval_fitness, reverse=True)
 	return pool
