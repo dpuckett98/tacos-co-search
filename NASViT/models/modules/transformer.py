@@ -205,6 +205,9 @@ class DynamicWindowAttention(MyModule):
         self.softmax = nn.Softmax(dim=-1)
         self.act = build_activation(act_layer, inplace=True)
 
+        # count attention scores
+        self.att_map_scores = torch.zeros(max(self.dim_list), max(self.dim_list))
+
     def forward(self, x, mask=None):
         """
         Args:
@@ -221,6 +224,8 @@ class DynamicWindowAttention(MyModule):
         q = q * self.scale
 
         attn = (q @ k.transpose(-2, -1))
+
+        self.att_map_scores += attn
 
 
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
