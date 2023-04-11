@@ -463,7 +463,6 @@ def start():
 def generate_model(config, model, data_loader_train, data_loader_val):
     criterion = nn.CrossEntropyLoss()
     subnet_cfg, flops, acc1 = attentive_nas_eval.validate(
-        #['attentive_nas_max_net'],
         ['attentive_nas_random_net'],
         data_loader_train,
         data_loader_val,
@@ -473,10 +472,21 @@ def generate_model(config, model, data_loader_train, data_loader_val):
         logger,
         bn_calibration = True,
         )
-    #string = res[0].split(' ')
-    #flops.append(string[13])
-    #accuracies.append(string[7])
     return subnet_cfg, flops, acc1
+
+def evaluate_config(config, model, data_loader_train, data_loader_val):
+    criterion = nn.CrossEntropyLoss()
+    subnet_cfg, flops, acc1 = attentive_nas_eval.validate(
+        [config],
+        data_loader_train,
+        data_loader_val,
+        model,
+        criterion,
+        config,
+        logger,
+        bn_calibration = True,
+        )
+    return flops, acc1
 
 if __name__ == '__main__':
     _, config = parse_option()
