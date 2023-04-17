@@ -1,9 +1,9 @@
 import math
 import timeit
 
-import build_models_v2 as bm
-import build_hardware_v2 as bh
-import dataflow_wrapper as dw
+from fastarch import build_models_v2 as bm
+from fastarch import build_hardware_v2 as bh
+from fastarch import dataflow_wrapper as dw
 
 def get_next_coords(dataflow, row, col, depth, tile_rows, tile_cols, tile_depth):
 	next_row = row

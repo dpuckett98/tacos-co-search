@@ -1,13 +1,14 @@
 import random
 import math
+import pickle
 
-import fastarch.generic_evolutionary_search as ges
+import pooled_evolutionary_search as ges
 import fastarch.random_search as rs
 import fastarch.build_models_v2 as bm
 import fastarch.build_hardware_v2 as bh
 import fastarch.dataflow_wrapper as dw
 
-from NASViT.main import start, generate_model
+from NASViT.main import start, generate_model, evaluate_config
 
 # model & datasets
 config = None
@@ -33,12 +34,16 @@ min_sram_size = on_chip_memory // 2
 # returns [[cycles, power, accuracy, flops], [hw_config, param_list], model_config]
 def sample_and_eval():
 	# initialize model if it's not already initialized
+	global model
+	global data_loader_train
+	global config
+	global data_loader_val
 	if model == None:
 		config, model, data_loader_train, data_loader_val = start()
 	
 	# sample model
 	subnet_cfg, flops, acc1 = generate_model(config, model, data_loader_train, data_loader_val)
-	curr_model = bm.NASViT_subnet_to_model(subnet_cfg, 1, 1.0, 1.0, 0.0)
+	curr_model = bm.create_nasvit_from_config(subnet_cfg, 1, 1.0, 1.0, 0.0)
 	layer_set = bm.model_to_layer_set(curr_model)
 
 	# generate random hw config
@@ -63,6 +68,11 @@ def sample_and_eval():
 
 # returns [[cycles, power, accuracy, flops], [hw_config, param_list], model_config]
 def mutate_and_eval(entity, mutate_rate):
+	global model
+	global config
+	global data_loader_train
+	global data_loader_val
+
 	# duplicate model config
 	subnet_cfg = entity[2].copy()
 	
@@ -70,7 +80,11 @@ def mutate_and_eval(entity, mutate_rate):
 	new_subnet_cfg = model.mutate_and_reset(subnet_cfg, prob=mutate_rate)
 	
 	# evaluate new model config
-	flops, acc1 = model.evaluate_config(new_subnet_cfg, model, data_loader_train, data_loader_val)
+	flops, acc1 = evaluate_config(config, new_subnet_cfg, model, data_loader_train, data_loader_val)
+
+	# create new layer_set
+	new_model = bm.create_nasvit_from_config(new_subnet_cfg, 1, 1.0, 1.0, 0.0)
+	layer_set = bm.model_to_layer_set(new_model)
 
 	# duplicate hw config
 	hw_config = bh.Hardware(entity[1][0].num_PE_lanes, entity[1][0].num_PEs_per_lane, entity[1][0].num_RFs_per_PE, entity[1][0].size_RF, entity[1][0].off_chip_bandwidth, entity[1][0].on_chip_bandwidth, entity[1][0].total_sram_size)
@@ -117,10 +131,26 @@ def eval_fitness(entity):
 	return entity[0][0] / entity[0][2]
 
 def test():
-	pool = ges.run_evolutionary_search(pool_size=2, num_generations=2, growth_rate=0.5, mutate_rate=0.5, sample_and_eval=sample_and_eval, mutate_and_eval=mutate_and_eval, eval_fitness=eval_fitness)
-	print(pool)
-	for p in pool:
-		print(p[0])
+	flops_boxes = [[0, 300], [300, 400], [400, 500], [500, 600], [600, 1000], [1000, 100000]] # matching NASViT
+	
+	boxes = []
+	num_PEs = 512
+	util = .8
+	clock_speed = 500000000
+	for (mi, ma) in flops_boxes:
+		ideal_min = mi * 1000000 / (num_PEs*util)
+		ideal_max = ma * 1000000 / (num_PEs*util)
+		boxes.append([ideal_min / clock_speed, ideal_max / clock_speed])
+
+	pool_list = ges.run_evolutionary_search(boxes=boxes, pool_size=2, num_generations=1, growth_rate=0.5, mutate_rate=0.2, sample_and_eval=sample_and_eval, mutate_and_eval=mutate_and_eval, eval_fitness=eval_fitness)
+	print(pool_list)
+	for box, pool in zip(boxes, pool_list):
+		print("Box:", box)
+		for p in pool:
+			print(pool[p])
+
+	with open("pooled_evolutionary_co_search_1.pickle", "wb") as f:
+		pickle.dump(pool_list, f)
 
 if __name__ == "__main__":
 	test()

@@ -206,7 +206,7 @@ class DynamicWindowAttention(MyModule):
         self.act = build_activation(act_layer, inplace=True)
 
         # count attention scores
-        self.att_map_scores = torch.zeros(max(self.dim_list), max(self.dim_list))
+        self.att_map_scores = None #torch.zeros(max(self.dim_list), max(self.dim_list))
 
     def forward(self, x, mask=None):
         """
@@ -225,7 +225,7 @@ class DynamicWindowAttention(MyModule):
 
         attn = (q @ k.transpose(-2, -1))
 
-        self.att_map_scores += attn
+        #self.att_map_scores += attn
 
 
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
@@ -246,6 +246,13 @@ class DynamicWindowAttention(MyModule):
             attn = self.softmax(attn)
         else:
             attn = self.softmax(attn)
+
+        if self.att_map_scores == None or self.att_map_scores.shape[0] != attn.shape[1] or self.att_map_scores.shape[1] != attn.shape[2] or self.att_map_scores.shape[2] != attn.shape[3]:
+            #print(attn.shape)
+            self.att_map_scores = torch.sum(attn.clone(), 0)
+        else:
+            #print(self.att_map_scores.shape, attn.shape, torch.sum(attn, 0).shape)
+            self.att_map_scores += torch.sum(attn.clone(), 0)
 
         attn = self.proj_w(attn.permute(0,2,3,1), out_features=C // self.head_dim).permute(0,3,1,2)
         attn = self.attn_drop(attn)

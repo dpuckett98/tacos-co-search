@@ -24,11 +24,21 @@ from timm.utils import accuracy, AverageMeter
 import timm as timm
 from timm.utils import ModelEma
 
+#from misc.config import get_config
+#import misc.attentive_nas_eval as attentive_nas_eval
+#import models as models
 from .misc.config import get_config
 import NASViT.misc.attentive_nas_eval as attentive_nas_eval
 import NASViT.models as models
 
 # from models import build_model
+#from data import build_loader
+#from misc.lr_scheduler import build_scheduler
+#from misc.optimizer import build_optimizer
+#from misc.utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_resume_helper, reduce_tensor
+#import misc.logger as logging
+
+#from misc.loss_ops import AdaptiveLossSoft
 from .data import build_loader
 from .misc.lr_scheduler import build_scheduler
 from .misc.optimizer import build_optimizer
@@ -36,6 +46,7 @@ from .misc.utils import load_checkpoint, save_checkpoint, get_grad_norm, auto_re
 import NASViT.misc.logger as logging
 
 from .misc.loss_ops import AdaptiveLossSoft
+
 # from misc.resnet import resnext50_32x4d, resnext101_32x4d
 try:
     from apex import amp
@@ -227,7 +238,9 @@ def main_worker(gpu, ngpus_per_node, config):
         # validate(config, data_loader_train, data_loader_val, model)
         # logger.info(f"Accuracy of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
         if config.EVAL_MODE:
-            count_att_map_scores(data_loader_train, model)
+            model = model.module
+            generate_att_map_scores(data_loader_val, model)
+            #count_att_map_scores(data_loader_val, model, model.sample_max_subnet(), "128_184_224.pt")
             return
 
     if config.THROUGHPUT_MODE:
@@ -256,17 +269,53 @@ def main_worker(gpu, ngpus_per_node, config):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
 
-def count_att_map_scores(train_data_loader, model):
+def generate_att_map_scores(data_loader, supernet):
+    base_config = supernet.sample_max_subnet()
+    # largest
+    print(base_config)
+    count_att_map_scores(data_loader, supernet, base_config, "72_128_184_224.pt")
+    # second largest
+    base_config["width"][4] = 64
+    base_config["width"][5] = 120
+    base_config["width"][6] = 176
+    base_config["width"][7] = 216
+    print(base_config)
+    count_att_map_scores(data_loader, supernet, base_config, "64_120_176_216.pt")
+    # third largest
+    base_config["width"][5] = 112
+    base_config["width"][6] = 168
+    base_config["width"][7] = 208
+    print(base_config)
+    count_att_map_scores(data_loader, supernet, base_config, "64_112_168_208.pt")
+    # fourth largest
+    base_config["width"][6] = 160
+    print(base_config)
+    count_att_map_scores(data_loader, supernet, base_config, "64_112_160_208.pt")
+
+def count_att_map_scores(data_loader, model, config, save_file):
+    # setup model
+    for c in model.modules():
+        if hasattr(c, "att_map_scores"):
+            c.att_map_scores = None
+    model.set_active_subnet(config['resolution'], config['width'], config['depth'], config['kernel_size'], config['expand_ratio'])
+    #model = supernet.get_active_subnet()
+
     # generate data
     for idx, (samples, targets) in enumerate(data_loader):
         samples = samples.cuda(non_blocking=True)
+        print(idx)
         with torch.no_grad():
             model(samples)
     
     # print/save results
-    for c in model.children():
+    res = []
+    for c in model.modules():
         if hasattr(c, "att_map_scores"):
-            print(c.att_map_scores)
+            #print(c.att_map_scores)
+            res.append(c.att_map_scores)
+
+    with open(save_file, "wb") as f:
+        torch.save(res, f)
 
 def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, teacher=None, model_ema=None, supernet_gradnorm=None, drop=False):
     model.train()
@@ -474,19 +523,37 @@ def generate_model(config, model, data_loader_train, data_loader_val):
         )
     return subnet_cfg, flops, acc1
 
-def evaluate_config(config, model, data_loader_train, data_loader_val):
+def evaluate_config(args, config, model, data_loader_train, data_loader_val):
     criterion = nn.CrossEntropyLoss()
     subnet_cfg, flops, acc1 = attentive_nas_eval.validate(
-        [config],
+        {'' : config},
         data_loader_train,
         data_loader_val,
         model,
         criterion,
-        config,
+        args,
         logger,
         bn_calibration = True,
         )
     return flops, acc1
+
+def regular_start():
+    _, config = parse_option()
+
+    cudnn.deterministic = True
+    warnings.warn('You have chosen to seed training. '
+                   'This will turn on the CUDNN deterministic setting, '
+                   'which can slow down your training considerably! '
+                   'You may see unexpected behavior when restarting '
+                   'from checkpoints.')
+
+    random.seed(config.SEED)
+    torch.manual_seed(config.SEED)
+    ngpus_per_node = 1 #  torch.cuda.device_count()
+    # Use torch.multiprocessing.spawn to launch distributed processes: the
+    mp.spawn(
+            main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config)
+            )
 
 if __name__ == '__main__':
     _, config = parse_option()

@@ -1,9 +1,9 @@
 import random
 import math
 
-from dataflow_wrapper import run_layer, run_layer_set
-from build_hardware_v2 import Hardware
-from build_models_v2 import LayerSet, model_to_layer_set, get_DeiT_Tiny, get_DeiT_Small, get_DeiT_Base, get_test, get_LeViT_128, get_LeViT_192, get_LeViT_256, create_nasvit_supernet, create_nasvit_smallest
+from fastarch.dataflow_wrapper import run_layer, run_layer_set
+from fastarch.build_hardware_v2 import Hardware
+from fastarch.build_models_v2 import LayerSet, model_to_layer_set, get_DeiT_Tiny, get_DeiT_Small, get_DeiT_Base, get_test, get_LeViT_128, get_LeViT_192, get_LeViT_256, create_nasvit_supernet, create_nasvit_smallest
 
 # search function
 # Inputs:
