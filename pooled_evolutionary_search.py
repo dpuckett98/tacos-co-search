@@ -20,9 +20,17 @@ def run_evolutionary_search(boxes, pool_size, num_generations, growth_rate, muta
 	for i in range(len(boxes) * pool_size):
 		entity = sample_and_eval()
 
+		added = False
+		print(entity)
 		for idx, (mi, ma) in enumerate(boxes):
+			print(mi, ma)
 			if entity[0][0] >= mi and entity[0][0] <= ma:
 				pool_list[idx].append(entity)
+				added = True
+				break
+		if not added:
+			print("Failed!!!")
+			quit()
 
 		#running = Fale
 		#for p in pool_list:

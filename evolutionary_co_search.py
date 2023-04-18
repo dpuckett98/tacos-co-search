@@ -64,7 +64,7 @@ def sample_and_eval():
 		total_cycles += cycles * count
 		total_dram_accesses += dram_accesses * count
 	
-	return [[total_cycles, total_dram_accesses, acc1, flops], [hw_config, param_list], subnet_cfg]
+	return [[total_cycles/500000000, total_dram_accesses, acc1, flops], [hw_config, param_list], subnet_cfg]
 
 # returns [[cycles, power, accuracy, flops], [hw_config, param_list], model_config]
 def mutate_and_eval(entity, mutate_rate):
@@ -124,7 +124,7 @@ def mutate_and_eval(entity, mutate_rate):
 		total_cycles += cycles * count
 		total_dram_accesses += dram_accesses * count
 	
-	return [[total_cycles, total_dram_accesses, acc1, flops], [hw_config, param_list], new_subnet_cfg]
+	return [[total_cycles/500000000, total_dram_accesses, acc1, flops], [hw_config, param_list], new_subnet_cfg]
 
 # returns fitness of the entity (lower is better)
 def eval_fitness(entity):
@@ -147,7 +147,7 @@ def test():
 	for box, pool in zip(boxes, pool_list):
 		print("Box:", box)
 		for p in pool:
-			print(pool[p])
+			print(p[0])
 
 	with open("pooled_evolutionary_co_search_1.pickle", "wb") as f:
 		pickle.dump(pool_list, f)

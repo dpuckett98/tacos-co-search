@@ -154,8 +154,14 @@ class OutlookAttention(MyModule):
         return x
 
 class DynamicWindowAttention(MyModule):
-    def __init__(self, dim_list, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., act_layer='relu6', downsample=1):
+    def __init__(self, dim_list, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., act_layer='relu6', downsample=1, masks=None):
         super(DynamicWindowAttention, self).__init__()
+
+        # adding binary sparsity masks
+        self.inv_sparsity = 1.0
+        self.sparsity_index = 0
+        self.masks = masks
+        self.curr_resolution = 288
 
         self.dim_list = dim_list
         # self.head_dim = max(dim_list) // num_heads
@@ -208,6 +214,26 @@ class DynamicWindowAttention(MyModule):
         # count attention scores
         self.att_map_scores = None #torch.zeros(max(self.dim_list), max(self.dim_list))
 
+    def set_sparse_index(self, inv_sparsity):
+        self.sparsity_index = 10 - int(10 * inv_sparsity)
+        self.inv_sparsity = inv_sparsity
+
+    def select_appropriate_mask(self, resolution, C): #input_dims):
+        #print(input_dims)
+        val = str(resolution) + "_" + str(C)
+        return self.masks[val]
+        print(C)
+        print("0", self.masks[0][0][0].shape)
+        print("1", self.masks[1][0][0].shape)
+        #print("2", self.masks[2][0].shape)
+        if C == 72 or C == 128 or C == 184 or C == 224:
+            return self.masks[0]
+        if C == 64 or C == 120 or C == 176 or C == 216:
+            return self.masks[1]
+        if C == 112 or C == 168 or C == 208:
+            return self.masks[2]
+        return self.masks[3]
+
     def forward(self, x, mask=None):
         """
         Args:
@@ -215,16 +241,17 @@ class DynamicWindowAttention(MyModule):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
+        #print(x.shape)
         q = self.q(x, out_features=x.shape[-1]).reshape(B_, N, C // self.head_dim, self.head_dim).permute(0, 2, 1, 3)
         k = self.k(x, out_features=x.shape[-1]).reshape(B_, N, C // self.head_dim, self.head_dim).permute(0, 2, 1, 3)
-
+        #print(q.shape)
         v = self.v(x, out_features=x.shape[-1] * self.expan_ratio)
         v = F.conv2d(v.permute(0, 2, 1).reshape(B_, -1, int(N**.5), int(N**.5)), self.vconv.weight[:C * self.expan_ratio, :, :, :], None, 1, 1, 1, C * self.expan_ratio)
         v = v.reshape(B_, -1, N).permute(0, 2, 1).reshape(B_, N, C // self.head_dim, -1).permute(0, 2, 1, 3)
         q = q * self.scale
 
         attn = (q @ k.transpose(-2, -1))
-
+        #print(attn.shape)
         #self.att_map_scores += attn
 
 
@@ -254,6 +281,15 @@ class DynamicWindowAttention(MyModule):
             #print(self.att_map_scores.shape, attn.shape, torch.sum(attn, 0).shape)
             self.att_map_scores += torch.sum(attn.clone(), 0)
 
+        # apply binary mask
+        # select binary mask based on input size
+        curr_mask = self.select_appropriate_mask(self.curr_resolution, C) #attn.shape)
+        #print(curr_mask[0][self.sparsity_index].shape)
+        # batched matrix multiply for each element in the batch (e.g. the batch dimension for the computation below is by head, not by batch)
+        for b in range(attn.shape[0]):
+            for h in range(attn.shape[1]):
+                attn[b][h] = attn[b][h] * curr_mask[h][self.sparsity_index]
+        
         attn = self.proj_w(attn.permute(0,2,3,1), out_features=C // self.head_dim).permute(0,3,1,2)
         attn = self.attn_drop(attn)
 
@@ -303,7 +339,7 @@ class DynamicWindowAttention(MyModule):
 class DynamicSwinTransformerBlock(MyModule):
     def __init__(self, dim_list, input_resolution, num_heads, window_size=14, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, downsample=1, rescale=1., shift=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, downsample=1, rescale=1., shift=False, masks=None):
         super(DynamicSwinTransformerBlock, self).__init__()
         self.dim_list = dim_list
         self.dim = max(dim_list)
@@ -325,7 +361,7 @@ class DynamicSwinTransformerBlock(MyModule):
         self.norm1 = norm_layer(self.dim)
         self.attn = DynamicWindowAttention(
             dim_list, window_size=to_2tuple(window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, act_layer=act_layer, downsample=downsample)
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, act_layer=act_layer, downsample=downsample, masks=masks)
 
         self.drop_path = DropPath(drop_path) # if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(self.dim)

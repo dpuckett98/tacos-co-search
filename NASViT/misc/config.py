@@ -181,6 +181,7 @@ _C.supernet_config.mb1.t = [1]
 _C.supernet_config.mb1.s = 1
 _C.supernet_config.mb1.act_func = 'swish'
 _C.supernet_config.mb1.se = False
+_C.supernet_config.mb1.inv_s = [1.0]
 
 _C.supernet_config.mb2 = CN()
 _C.supernet_config.mb2.c = [24, 32]
@@ -190,6 +191,7 @@ _C.supernet_config.mb2.t = [4, 5, 6]
 _C.supernet_config.mb2.s = 2
 _C.supernet_config.mb2.act_func = 'swish'
 _C.supernet_config.mb2.se = False
+_C.supernet_config.mb2.inv_s = [1.0]
 
 _C.supernet_config.mb3 = CN()
 _C.supernet_config.mb3.c = [32, 40]
@@ -199,6 +201,7 @@ _C.supernet_config.mb3.t = [4, 5, 6]
 _C.supernet_config.mb3.s = 2
 _C.supernet_config.mb3.act_func = 'swish'
 _C.supernet_config.mb3.se = True
+_C.supernet_config.mb3.inv_s = [1.0]
 
 _C.supernet_config.mb4 = CN()
 _C.supernet_config.mb4.c = [64, 72]
@@ -208,6 +211,7 @@ _C.supernet_config.mb4.t = [4, 5, 6]
 _C.supernet_config.mb4.s = 2
 _C.supernet_config.mb4.act_func = 'swish'
 _C.supernet_config.mb4.se = False
+_C.supernet_config.mb4.inv_s = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 
 _C.supernet_config.mb5 = CN()
 _C.supernet_config.mb5.c = [112, 120, 128]
@@ -217,7 +221,7 @@ _C.supernet_config.mb5.t = [4, 5, 6]
 _C.supernet_config.mb5.s = 2
 _C.supernet_config.mb5.act_func = 'swish'
 _C.supernet_config.mb5.se = True
-
+_C.supernet_config.mb5.inv_s = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 
 _C.supernet_config.mb6 = CN()
 _C.supernet_config.mb6.c = [160, 168, 176, 184] # [168, 176, 184, 192]
@@ -227,6 +231,7 @@ _C.supernet_config.mb6.t = [6]
 _C.supernet_config.mb6.s = 1
 _C.supernet_config.mb6.act_func = 'swish'
 _C.supernet_config.mb6.se = True
+_C.supernet_config.mb6.inv_s = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 
 _C.supernet_config.mb7 = CN()
 _C.supernet_config.mb7.c = [208, 216, 224]
@@ -236,6 +241,7 @@ _C.supernet_config.mb7.t = [6]
 _C.supernet_config.mb7.s = 2
 _C.supernet_config.mb7.act_func = 'swish'
 _C.supernet_config.mb7.se = True
+_C.supernet_config.mb7.inv_s = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
 
 _C.supernet_config.last_conv = CN()
 _C.supernet_config.last_conv.c = [1792, 1984]

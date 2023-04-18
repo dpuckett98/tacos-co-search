@@ -28,7 +28,7 @@ class AttentiveNasDynamicModel(MyNetwork):
         self.use_v3_head = getattr(self.supernet, 'use_v3_head', False)
         self.stage_names = ['first_conv', 'mb1', 'mb2', 'mb3', 'mb4', 'mb5', 'mb6', 'mb7', 'last_conv']
 
-        self.width_list, self.depth_list, self.ks_list, self.expand_ratio_list = [], [], [], []
+        self.width_list, self.depth_list, self.ks_list, self.expand_ratio_list, self.inv_sparsity_list = [], [], [], [], []
         for name in self.stage_names:
             block_cfg = getattr(self.supernet, name)
             self.width_list.append(block_cfg.c)
@@ -36,6 +36,7 @@ class AttentiveNasDynamicModel(MyNetwork):
                 self.depth_list.append(block_cfg.d)
                 self.ks_list.append(block_cfg.k)
                 self.expand_ratio_list.append(block_cfg.t)
+                self.inv_sparsity_list.append(block_cfg.inv_s)
         self.resolution_list = self.supernet.resolutions
 
         self.cfg_candidates = {
@@ -43,10 +44,16 @@ class AttentiveNasDynamicModel(MyNetwork):
             'width': self.width_list,
             'depth': self.depth_list,
             'kernel_size': self.ks_list,
-            'expand_ratio': self.expand_ratio_list
+            'expand_ratio': self.expand_ratio_list,
+            'inv_sparsity': self.inv_sparsity_list
         }
 
-        #first conv layer, including conv, bn, act
+        # load sparsity masks
+        with open("NASViT/binary_masks.pt", "rb") as f:
+            binary_masks_list = torch.load(f, map_location="cuda:0")
+        mask_index = 0
+
+        # first conv layer, including conv, bn, act
         out_channel_list, act_func, stride = \
             self.supernet.first_conv.c, self.supernet.first_conv.act_func, self.supernet.first_conv.s
         self.first_conv = DynamicConvBnActLayer(
@@ -80,9 +87,9 @@ class AttentiveNasDynamicModel(MyNetwork):
                 if stage_id >= 3 and i >= 1: # not (stage_id == 4 and i == 0):
 
                     rescale = 1.
-                    transformer = StandardDynamicSwinTransformerBlock(feature_dim, input_resolution=(18,18), num_heads=num_heads[stage_id-3], window_size=18, shift_size=0, mlp_ratio=1., act_layer=act_func, rescale=rescale, shift = False ) 
+                    transformer = StandardDynamicSwinTransformerBlock(feature_dim, input_resolution=(18,18), num_heads=num_heads[stage_id-3], window_size=18, shift_size=0, mlp_ratio=1., act_layer=act_func, rescale=rescale, shift = False, masks=binary_masks_list[mask_index]) 
                     blocks.append(transformer)
-
+                    mask_index += 1
                 else:
                     mobile_inverted_conv = DynamicMBConvLayer(
                         in_channel_list=feature_dim,
@@ -231,15 +238,17 @@ class AttentiveNasDynamicModel(MyNetwork):
 
 
     """ set, sample and get active sub-networks """
-    def set_active_subnet(self, resolution=224, width=None, depth=None, kernel_size=None, expand_ratio=None, **kwargs):
-        assert len(depth) == len(kernel_size) == len(expand_ratio) == len(width) - 2
+    def set_active_subnet(self, resolution=224, width=None, depth=None, kernel_size=None, expand_ratio=None, inv_sparsity=None, **kwargs):
+        #print(inv_sparsity)
+        #print(width)
+        assert len(depth) == len(kernel_size) == len(expand_ratio) == len(width) - 2 == len(inv_sparsity)
         #set resolution
         self.active_resolution = resolution
 
         # first conv
         self.first_conv.active_out_channel = width[0]
 
-        for stage_id, (c, k, e, d) in enumerate(zip(width[1:-1], kernel_size, expand_ratio, depth)):
+        for stage_id, (c, k, e, d, inv_s) in enumerate(zip(width[1:-1], kernel_size, expand_ratio, depth, inv_sparsity)):
             start_idx, end_idx = min(self.block_group_info[stage_id]), max(self.block_group_info[stage_id])
 
             #idx_step = (end_idx - start_idx + 1) * 1. / d
@@ -262,7 +271,8 @@ class AttentiveNasDynamicModel(MyNetwork):
                     #dw expansion ration
                     block.mobile_inverted_conv.active_expand_ratio = e
                 else:
-                    pass
+                    block.attn.curr_resolution = self.active_resolution
+                    block.attn.set_sparse_index(inv_s)
                     # if block_id == start_idx:
                     #     block.out_dim = c
         #IRBlocks repated times
@@ -280,7 +290,7 @@ class AttentiveNasDynamicModel(MyNetwork):
 
     def get_active_subnet_settings(self):
         r = self.active_resolution
-        width, depth, kernel_size, expand_ratio= [], [], [],  []
+        width, depth, kernel_size, expand_ratio, inv_sparsity = [], [], [],  [], []
 
         #first conv
         width.append(self.first_conv.active_out_channel)
@@ -292,7 +302,7 @@ class AttentiveNasDynamicModel(MyNetwork):
                 kernel_size.append(block.mobile_inverted_conv.active_kernel_size)
                 expand_ratio.append(block.mobile_inverted_conv.active_expand_ratio)
             except:
-                pass
+                inv_sparsity.append(block.attn.inv_sparsity)
                 '''
                 # double check
                 width.append(block.out_dim)
@@ -312,6 +322,7 @@ class AttentiveNasDynamicModel(MyNetwork):
             'kernel_size': kernel_size,
             'expand_ratio': expand_ratio,
             'depth': depth,
+            'inv_sparsity': inv_sparsity
         }
 
     def set_dropout_rate(self, dropout=0, drop_connect=0, drop_connect_only_last_two_stages=True):
@@ -360,14 +371,14 @@ class AttentiveNasDynamicModel(MyNetwork):
         cfg = {}
         # sample a resolution
         cfg['resolution'] = sample_cfg(self.cfg_candidates['resolution'], min_net, max_net)
-        for k in ['width', 'depth', 'kernel_size', 'expand_ratio']:
+        for k in ['width', 'depth', 'kernel_size', 'expand_ratio', 'inv_sparsity']:
             cfg[k] = []
             for vv in self.cfg_candidates[k]:
                 cfg[k].append(sample_cfg(int2list(vv), min_net, max_net))
 
 
         self.set_active_subnet(
-            cfg['resolution'], cfg['width'], cfg['depth'], cfg['kernel_size'], cfg['expand_ratio']
+            cfg['resolution'], cfg['width'], cfg['depth'], cfg['kernel_size'], cfg['expand_ratio'], cfg['inv_sparsity']
         )
         return cfg
 
@@ -381,14 +392,14 @@ class AttentiveNasDynamicModel(MyNetwork):
             cfg['resolution'] = pick_another(cfg['resolution'], self.cfg_candidates['resolution'])
 
         # sample channels, depth, kernel_size, expand_ratio
-        for k in ['width', 'depth', 'kernel_size', 'expand_ratio']:
+        for k in ['width', 'depth', 'kernel_size', 'expand_ratio', 'inv_sparsity']:
             for _i, _v in enumerate(cfg[k]):
                 r = random.random()
                 if r < prob:
                     cfg[k][_i] = pick_another(cfg[k][_i], int2list(self.cfg_candidates[k][_i]))
 
         self.set_active_subnet(
-            cfg['resolution'], cfg['width'], cfg['depth'], cfg['kernel_size'], cfg['expand_ratio']
+            cfg['resolution'], cfg['width'], cfg['depth'], cfg['kernel_size'], cfg['expand_ratio'], cfg['inv_sparsity']
         )
         return cfg
 
