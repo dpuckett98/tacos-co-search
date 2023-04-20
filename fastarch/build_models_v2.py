@@ -804,7 +804,7 @@ def get_SwinTransformerLayer(model, h, w, c, dimension, num_heads, mlp_ratio=1, 
 	
 	return h, w, c
 
-def NASViT_subnet_to_model(subnet_config, batch_size=1, comp_size_q=1, comp_size_k=1, sparsity=0.0):
+def NASViT_subnet_to_model(subnet_config, batch_size=1, comp_size_q=1, comp_size_k=1):
 	model = Model(batch_size)
 	
 	# constants
@@ -818,7 +818,7 @@ def NASViT_subnet_to_model(subnet_config, batch_size=1, comp_size_q=1, comp_size
 	
 	# first do "first conv"
 	h, w, c = model.add_convolution(h, w, c, subnet_config["width"][0], 3, 2)
-	
+	print(subnet_config["inv_sparsity"])
 	# then, for each stage...
 	for stage_id in range(7):
 		#print(h, w, c)
@@ -838,7 +838,7 @@ def NASViT_subnet_to_model(subnet_config, batch_size=1, comp_size_q=1, comp_size
 			# generate SwinTransformers
 			else:
 				#print("Before swin", h, w, c)
-				get_SwinTransformerLayer(model, h, w, c, subnet_config["width"][stage_id+1], num_heads[stage_id-3], mlp_ratio=subnet_config["expansion_ratio"][stage_id], comp_size_q=comp_size_q, comp_size_k=comp_size_k, sparsity=sparsity)
+				get_SwinTransformerLayer(model, h, w, c, subnet_config["width"][stage_id+1], num_heads[stage_id-3], mlp_ratio=subnet_config["expansion_ratio"][stage_id], comp_size_q=comp_size_q, comp_size_k=comp_size_k, sparsity=1.0 - subnet_config["inv_sparsity"][stage_id])
 				#print("After swin", h, w, c)
 		
 		#if stage_id == 6: # and i == 0:
@@ -1002,10 +1002,10 @@ def create_nasvit_supernet(batch_size=1, comp_size_q=1, comp_size_k=1, sparsity=
 		}
 	return NASViT_subnet_to_model(subnet_config, batch_size, comp_size_q, comp_size_k, sparsity)
 
-def create_nasvit_from_config(config, batch_size=1, comp_size_q=1, comp_size_k=1, sparsity=0.0):
+def create_nasvit_from_config(config, batch_size=1, comp_size_q=1, comp_size_k=1):
 	config["expansion_ratio"] = config["expand_ratio"]
 	config["use_se"] = [False, False, True, False, True, True, True]
-	return NASViT_subnet_to_model(config, batch_size, comp_size_q, comp_size_k, sparsity)
+	return NASViT_subnet_to_model(config, batch_size, comp_size_q, comp_size_k)
 
 def create_nasvit_a1(batch_size=1):
 	subnet_config = {

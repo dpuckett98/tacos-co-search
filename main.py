@@ -71,10 +71,10 @@ if __name__ == "__main__":
 		latency_boxes.append([ideal_min / clock_speed, ideal_max / clock_speed])
 	#print(latency_boxes)
 	
-	boxes = run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 2, latency_boxes)
+	boxes = run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 100, latency_boxes)
 
 	print(boxes)
 	for b in boxes:
 		print(b[4], b[5], b[6], b[7])
-	with open("first_res.pickle", 'wb') as out_file:
+	with open("res_with_sparsity.pickle", 'wb') as out_file:
 		pickle.dump(boxes, out_file, pickle.HIGHEST_PROTOCOL)

@@ -185,7 +185,7 @@ def main_worker(gpu, ngpus_per_node, config):
     optimizer = build_optimizer(config, model)
     if config.AMP_OPT_LEVEL != "O0":
         model, optimizer = amp.initialize(model, optimizer, opt_level=config.AMP_OPT_LEVEL)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=True, gradient_as_bucket_view=False)
     model_without_ddp = model.module
 
     teachers = []
@@ -504,16 +504,20 @@ def start():
     random.seed(config.SEED)
     torch.manual_seed(config.SEED)
     
+    _setup_worker_env(0, 1, config)
+
     # create model
     model = models.model_factory.create_model(config)
     model.cuda()
     logger.info(str(model))
     dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
     
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=True, gradient_as_bucket_view=False)
+
     optimizer = build_optimizer(config, model)
     lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
     if config.MODEL.RESUME:
-                max_accuracy = load_checkpoint(config, model, optimizer, lr_scheduler, logger)
+                max_accuracy = load_checkpoint(config, model.module, optimizer, lr_scheduler, logger)
 
     return config, model, data_loader_train, data_loader_val
 
@@ -567,7 +571,7 @@ def regular_start():
 
     random.seed(config.SEED)
     torch.manual_seed(config.SEED)
-    ngpus_per_node = 1 #  torch.cuda.device_count()
+    ngpus_per_node = torch.cuda.device_count()
     # Use torch.multiprocessing.spawn to launch distributed processes: the
     mp.spawn(
             main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config)

@@ -44,12 +44,12 @@ def validate_one_subnet(
     #evaluation
     end = time.time()
 
-    subnet.cuda() #args.gpu)
+    subnet.cuda(args.gpu)
     subnet.eval() # freeze again all running stats
 
     for batch_idx, (images, target) in enumerate(val_loader):
-        images = images.cuda(non_blocking=True) #args.gpu, non_blocking=True)
-        target = target.cuda(non_blocking=True) #args.gpu, non_blocking=True)
+        images = images.cuda(args.gpu, non_blocking=True)
+        target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
         output = subnet(images)
@@ -60,7 +60,7 @@ def validate_one_subnet(
 
         batch_size = images.size(0)
 
-        if False: #args.distributed and getattr(args, 'distributed_val', True):
+        if args.distributed and getattr(args, 'distributed_val', True):
             corr1, corr5, loss = acc1 * batch_size, acc5 * batch_size, loss * batch_size
             stats = torch.tensor([corr1, corr5, loss, batch_size], device=args.gpu)
             dist.barrier()  # synchronizes all processes

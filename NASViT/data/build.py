@@ -66,46 +66,46 @@ def build_loader(config):
     dataset_val = datasets.ImageFolder(valdir, test_transform)
 
     config.freeze()
-    #print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build train dataset")
-    #dataset_val, _ = build_dataset(is_train=False, config=config)
-    #print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
+    print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build train dataset")
+    dataset_val, _ = build_dataset(is_train=False, config=config)
+    print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
 
-    #num_tasks = dist.get_world_size()
-    #global_rank = dist.get_rank()
+    num_tasks = dist.get_world_size()
+    global_rank = dist.get_rank()
 
-    #sampler_train = torch.utils.data.DistributedSampler(dataset_train)
+    sampler_train = torch.utils.data.DistributedSampler(dataset_train)
 
     # let's use distributed sampler for the val dataset as well
     # data loading is general slow for cloud jobs
-    #sampler_val = None
-    #persistent_workers = True
-    #if config.workflow_run_id:
-    #    sampler_val = torch.utils.data.DistributedSampler(dataset_val)
+    sampler_val = None
+    persistent_workers = True
+    if config.workflow_run_id:
+        sampler_val = torch.utils.data.DistributedSampler(dataset_val)
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
-        #sampler=sampler_train,
-        shuffle=True, #(False if sampler_train else True),
+        sampler=sampler_train,
+        shuffle=(False if sampler_train else True),
         batch_size=config.DATA.BATCH_SIZE,
-        #num_workers=config.DATA.NUM_WORKERS,
+        num_workers=config.DATA.NUM_WORKERS,
         pin_memory=config.DATA.PIN_MEMORY,
         drop_last=True,
         # collate_fn=collate_fn,
-        #persistent_workers=persistent_workers,
-        #prefetch_factor=config.DATA.PREFETCH_FACTOR
+        persistent_workers=persistent_workers,
+        prefetch_factor=config.DATA.PREFETCH_FACTOR
     )
 
     data_loader_val = torch.utils.data.DataLoader(
         dataset_val,
-        #sampler=sampler_val,
+        sampler=sampler_val,
         batch_size=config.DATA.BATCH_SIZE,
         shuffle=False,
-        #num_workers=config.DATA.NUM_WORKERS,
+        num_workers=config.DATA.NUM_WORKERS,
         pin_memory=config.DATA.PIN_MEMORY,
         drop_last=False,
         # collate_fn=collate_fn,
-        #persistent_workers=persistent_workers,
-        #prefetch_factor=config.DATA.PREFETCH_FACTOR
+        persistent_workers=persistent_workers,
+        prefetch_factor=config.DATA.PREFETCH_FACTOR
     )
 
     # setup mixup / cutmix

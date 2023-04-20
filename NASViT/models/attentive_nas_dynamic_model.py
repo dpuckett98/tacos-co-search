@@ -297,12 +297,18 @@ class AttentiveNasDynamicModel(MyNetwork):
         for stage_id in range(len(self.block_group_info)):
             start_idx = min(self.block_group_info[stage_id])
             block = self.blocks[start_idx]  #first block
+            #print(self.blocks[start_idx+1])
+            if isinstance(self.blocks[start_idx+1], StandardDynamicSwinTransformerBlock): #hasattr(block, 'attn'):
+                inv_sparsity.append(self.blocks[start_idx+1].attn.inv_sparsity)
+            else:
+                inv_sparsity.append(-1)
+            #print("here")
             try:
                 width.append(block.mobile_inverted_conv.active_out_channel)
                 kernel_size.append(block.mobile_inverted_conv.active_kernel_size)
                 expand_ratio.append(block.mobile_inverted_conv.active_expand_ratio)
             except:
-                inv_sparsity.append(block.attn.inv_sparsity)
+                pass
                 '''
                 # double check
                 width.append(block.out_dim)
@@ -310,7 +316,7 @@ class AttentiveNasDynamicModel(MyNetwork):
                 expand_ratio.append(4)
                 '''
             depth.append(self.runtime_depth[stage_id])
-
+        #print(inv_sparsity)
         if not self.use_v3_head:
             width.append(self.last_conv.active_out_channel)
         else:

@@ -12,7 +12,7 @@ def run_evolutionary_search(boxes, pool_size, num_generations, growth_rate, muta
 
 	# generate initial pool
 	print("***"*10)
-	print("Generating initial pool of", pool_size, "entities")
+	print("Generating initial pool of", pool_size*len(boxes), "entities")
 	print("***"*10)
 	pool_list = [[] for i in range(len(boxes))]
 	#running = True
