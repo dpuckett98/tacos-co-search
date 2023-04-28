@@ -17,7 +17,7 @@ _C.DATA = CN()
 # Batch size for a single GPU, could be overwritten by command line argument
 _C.DATA.BATCH_SIZE = 128
 # Path to dataset, could be overwritten by command line argument
-_C.DATA.DATA_PATH = '/srv/rdf/shared/ILSVRC/Data/CLS-LOC'
+_C.DATA.DATA_PATH = '/scratch/dcp10/ILSVRC/Data/CLS-LOC' #/srv/rdf/shared/ILSVRC/Data/CLS-LOC'
 # Dataset name
 _C.DATA.DATASET = 'imagenet'
 # Input image size

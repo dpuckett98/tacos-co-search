@@ -50,7 +50,7 @@ class AttentiveNasDynamicModel(MyNetwork):
 
         # load sparsity masks
         with open("NASViT/binary_masks.pt", "rb") as f:
-            binary_masks_list = torch.load(f, map_location="cuda:0")
+            binary_masks_list = torch.load(f, map_location="cuda")
         mask_index = 0
 
         # first conv layer, including conv, bn, act

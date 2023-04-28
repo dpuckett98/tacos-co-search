@@ -161,6 +161,15 @@ class DynamicWindowAttention(MyModule):
         self.inv_sparsity = 1.0
         self.sparsity_index = 0
         self.masks = masks
+        for key in self.masks:
+            inv_sparsity_list = [torch.empty((len(self.masks[key]), self.masks[key][0][0].shape[0], self.masks[key][0][0].shape[1]), device="cuda") for i in range(len(self.masks[key][0]))]
+            #print("Sparsity list length:", len(inv_sparsity_list))
+            #print(inv_sparsity_list[0].shape)
+            for hi, head in enumerate(self.masks[key]):
+                for si, inv_s in enumerate(head):
+                   #print("hi", hi, "si", si)
+                   inv_sparsity_list[si][hi] = inv_s
+            self.masks[key] = inv_sparsity_list 
         self.curr_resolution = 288
 
         self.dim_list = dim_list
@@ -221,7 +230,7 @@ class DynamicWindowAttention(MyModule):
     def select_appropriate_mask(self, resolution, C): #input_dims):
         #print(input_dims)
         val = str(resolution) + "_" + str(C)
-        return self.masks[val]
+        return self.masks[val][self.sparsity_index]
         print(C)
         print("0", self.masks[0][0][0].shape)
         print("1", self.masks[1][0][0].shape)
@@ -266,6 +275,13 @@ class DynamicWindowAttention(MyModule):
 
         attn = self.proj_l(attn.permute(0,2,3,1), out_features=C // self.head_dim).permute(0,3,1,2)
 
+        curr_mask = self.select_appropriate_mask(self.curr_resolution, C) #attn.shape)
+        curr_mask = curr_mask.repeat(B_, 1, 1, 1)
+        #print(curr_mask.shape)
+        #if curr_mask.shape[2] == 9:
+        #    print(curr_mask[0][0])
+        attn = attn.masked_fill(curr_mask == 0, float('-1e-8'))
+
         if mask is not None:
             nW = mask.shape[0]
             attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
@@ -274,21 +290,24 @@ class DynamicWindowAttention(MyModule):
         else:
             attn = self.softmax(attn)
 
-        if self.att_map_scores == None or self.att_map_scores.shape[0] != attn.shape[1] or self.att_map_scores.shape[1] != attn.shape[2] or self.att_map_scores.shape[2] != attn.shape[3]:
+#        if self.att_map_scores == None or self.att_map_scores.shape[0] != attn.shape[1] or self.att_map_scores.shape[1] != attn.shape[2] or self.att_map_scores.shape[2] != attn.shape[3]:
             #print(attn.shape)
-            self.att_map_scores = torch.sum(attn.clone(), 0)
-        else:
+#            self.att_map_scores = torch.sum(attn.clone(), 0)
+#        else:
             #print(self.att_map_scores.shape, attn.shape, torch.sum(attn, 0).shape)
-            self.att_map_scores += torch.sum(attn.clone(), 0)
+#            self.att_map_scores += torch.sum(attn.clone(), 0)
 
         # apply binary mask
         # select binary mask based on input size
-        curr_mask = self.select_appropriate_mask(self.curr_resolution, C) #attn.shape)
+        #curr_mask = self.select_appropriate_mask(self.curr_resolution, C) #attn.shape)
+        #curr_mask = curr_mask.repeat(B_, 1, 1, 1)
+        #attn = attn.masked_fill(curr_mask == 0, float('-inf'))
         #print(curr_mask[0][self.sparsity_index].shape)
         # batched matrix multiply for each element in the batch (e.g. the batch dimension for the computation below is by head, not by batch)
-        for b in range(attn.shape[0]):
-            for h in range(attn.shape[1]):
-                attn[b][h] = attn[b][h] * curr_mask[h][self.sparsity_index]
+        #new_attn = torch.empty(attn.size()).cuda() #attn.clone()
+        #for b in range(attn.shape[0]):
+        #    for h in range(attn.shape[1]):
+        #        new_attn[b][h] = attn[b][h] * curr_mask[h][self.sparsity_index]
         
         attn = self.proj_w(attn.permute(0,2,3,1), out_features=C // self.head_dim).permute(0,3,1,2)
         attn = self.attn_drop(attn)
