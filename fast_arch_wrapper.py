@@ -37,9 +37,11 @@ class FastArchWrapper:
 				best_param = None
 				best_cycles = -1
 				best_dram_accesses = -1
-				
+
+				all_params = es.generate_random_param(hw, layer, self.param_iters)			
+	
 				for p in range(self.param_iters):
-					param = es.generate_random_param(hw, layer)
+					param = all_params[p] #es.generate_random_param(hw, layer, 1)[0]
 					cycles, dram_accesses, _, _, _ = dw.run_layer(hw, param, layer, estimate=True)
 					
 					if best_param == None or cycles < best_cycles:

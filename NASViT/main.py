@@ -185,7 +185,7 @@ def main_worker(gpu, ngpus_per_node, config):
     optimizer = build_optimizer(config, model)
     if config.AMP_OPT_LEVEL != "O0":
         model, optimizer = amp.initialize(model, optimizer, opt_level=config.AMP_OPT_LEVEL)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=True, gradient_as_bucket_view=False)
     model_without_ddp = model.module
 
     teachers = []
@@ -238,8 +238,10 @@ def main_worker(gpu, ngpus_per_node, config):
         # validate(config, data_loader_train, data_loader_val, model)
         # logger.info(f"Accuracy of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
         if config.EVAL_MODE:
-            model = model.module
-            generate_att_map_scores(data_loader_val, model)
+            #validate(config, data_loader_train, data_loader_val, model)
+            random_search(config, model, data_loader_train, data_loader_val, 20)
+            #model = model.module
+            #generate_att_map_scores(data_loader_val, model)
             #count_att_map_scores(data_loader_val, model, model.sample_max_subnet(), "128_184_224.pt")
             return
 
@@ -270,34 +272,40 @@ def main_worker(gpu, ngpus_per_node, config):
     logger.info('Training time {}'.format(total_time_str))
 
 def generate_att_map_scores(data_loader, supernet):
-    base_config = supernet.sample_max_subnet()
-    # largest
-    print(base_config)
-    count_att_map_scores(data_loader, supernet, base_config, "72_128_184_224.pt")
-    # second largest
-    base_config["width"][4] = 64
-    base_config["width"][5] = 120
-    base_config["width"][6] = 176
-    base_config["width"][7] = 216
-    print(base_config)
-    count_att_map_scores(data_loader, supernet, base_config, "64_120_176_216.pt")
-    # third largest
-    base_config["width"][5] = 112
-    base_config["width"][6] = 168
-    base_config["width"][7] = 208
-    print(base_config)
-    count_att_map_scores(data_loader, supernet, base_config, "64_112_168_208.pt")
-    # fourth largest
-    base_config["width"][6] = 160
-    print(base_config)
-    count_att_map_scores(data_loader, supernet, base_config, "64_112_160_208.pt")
+    #base_config = supernet.sample_max_subnet()
+    #print(base_config)
+    #count_att_map_scores(data_loader, supernet, base_config, "test.pt")
+    #return
+    for resolution in [192, 224, 256, 288]:
+        base_config = supernet.sample_max_subnet()
+        base_config["resolution"] = resolution
+        # largest
+        print(base_config)
+        count_att_map_scores(data_loader, supernet, base_config, str(resolution) + "_72_128_184_224.pt")
+        # second largest
+        base_config["width"][4] = 64
+        base_config["width"][5] = 120
+        base_config["width"][6] = 176
+        base_config["width"][7] = 216
+        print(base_config)
+        count_att_map_scores(data_loader, supernet, base_config, str(resolution) + "_64_120_176_216.pt")
+        # third largest
+        base_config["width"][5] = 112
+        base_config["width"][6] = 168
+        base_config["width"][7] = 208
+        print(base_config)
+        count_att_map_scores(data_loader, supernet, base_config, str(resolution) + "_64_112_168_208.pt")
+        # fourth largest
+        base_config["width"][6] = 160
+        print(base_config)
+        count_att_map_scores(data_loader, supernet, base_config, str(resolution) + "_64_112_160_208.pt")
 
 def count_att_map_scores(data_loader, model, config, save_file):
     # setup model
     for c in model.modules():
         if hasattr(c, "att_map_scores"):
             c.att_map_scores = None
-    model.set_active_subnet(config['resolution'], config['width'], config['depth'], config['kernel_size'], config['expand_ratio'])
+    model.set_active_subnet(config['resolution'], config['width'], config['depth'], config['kernel_size'], config['expand_ratio'], config['inv_sparsity'])
     #model = supernet.get_active_subnet()
 
     # generate data
@@ -496,18 +504,32 @@ def start():
     random.seed(config.SEED)
     torch.manual_seed(config.SEED)
     
+    _setup_worker_env(0, 1, config)
+
     # create model
     model = models.model_factory.create_model(config)
     model.cuda()
     logger.info(str(model))
     dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
     
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False, find_unused_parameters=True, gradient_as_bucket_view=False)
+
     optimizer = build_optimizer(config, model)
     lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
     if config.MODEL.RESUME:
-                max_accuracy = load_checkpoint(config, model, optimizer, lr_scheduler, logger)
+                max_accuracy = load_checkpoint(config, model.module, optimizer, lr_scheduler, logger)
 
     return config, model, data_loader_train, data_loader_val
+
+def random_search(config, model, data_loader_train, data_loader_val, iters):
+    flops = []
+    acc = []
+    for i in range(iters):
+        cfg, f, a = generate_model(config, model, data_loader_train, data_loader_val)
+        flops.append(f)
+        acc.append(a)
+    print(flops)
+    print(acc)
 
 def generate_model(config, model, data_loader_train, data_loader_val):
     criterion = nn.CrossEntropyLoss()
@@ -549,7 +571,7 @@ def regular_start():
 
     random.seed(config.SEED)
     torch.manual_seed(config.SEED)
-    ngpus_per_node = 1 #  torch.cuda.device_count()
+    ngpus_per_node = torch.cuda.device_count()
     # Use torch.multiprocessing.spawn to launch distributed processes: the
     mp.spawn(
             main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, config)

@@ -43,7 +43,7 @@ def sample_and_eval():
 	
 	# sample model
 	subnet_cfg, flops, acc1 = generate_model(config, model, data_loader_train, data_loader_val)
-	curr_model = bm.create_nasvit_from_config(subnet_cfg, 1, 1.0, 1.0, 0.0)
+	curr_model = bm.create_nasvit_from_config(subnet_cfg, 1, 1.0, 1.0)
 	layer_set = bm.model_to_layer_set(curr_model)
 
 	# generate random hw config
@@ -64,7 +64,7 @@ def sample_and_eval():
 		total_cycles += cycles * count
 		total_dram_accesses += dram_accesses * count
 	
-	return [[total_cycles, total_dram_accesses, acc1, flops], [hw_config, param_list], subnet_cfg]
+	return [[total_cycles/500000000, total_dram_accesses, acc1, flops], [hw_config, param_list], subnet_cfg]
 
 # returns [[cycles, power, accuracy, flops], [hw_config, param_list], model_config]
 def mutate_and_eval(entity, mutate_rate):
@@ -83,7 +83,7 @@ def mutate_and_eval(entity, mutate_rate):
 	flops, acc1 = evaluate_config(config, new_subnet_cfg, model, data_loader_train, data_loader_val)
 
 	# create new layer_set
-	new_model = bm.create_nasvit_from_config(new_subnet_cfg, 1, 1.0, 1.0, 0.0)
+	new_model = bm.create_nasvit_from_config(new_subnet_cfg, 1, 1.0, 1.0)
 	layer_set = bm.model_to_layer_set(new_model)
 
 	# duplicate hw config
@@ -124,11 +124,11 @@ def mutate_and_eval(entity, mutate_rate):
 		total_cycles += cycles * count
 		total_dram_accesses += dram_accesses * count
 	
-	return [[total_cycles, total_dram_accesses, acc1, flops], [hw_config, param_list], new_subnet_cfg]
+	return [[total_cycles/500000000, total_dram_accesses, acc1, flops], [hw_config, param_list], new_subnet_cfg]
 
 # returns fitness of the entity (lower is better)
 def eval_fitness(entity):
-	return entity[0][0] / entity[0][2]
+	return entity[0][2] #entity[0][0] / entity[0][2]
 
 def test():
 	flops_boxes = [[0, 300], [300, 400], [400, 500], [500, 600], [600, 1000], [1000, 100000]] # matching NASViT
@@ -142,12 +142,12 @@ def test():
 		ideal_max = ma * 1000000 / (num_PEs*util)
 		boxes.append([ideal_min / clock_speed, ideal_max / clock_speed])
 
-	pool_list = ges.run_evolutionary_search(boxes=boxes, pool_size=2, num_generations=1, growth_rate=0.5, mutate_rate=0.2, sample_and_eval=sample_and_eval, mutate_and_eval=mutate_and_eval, eval_fitness=eval_fitness)
+	pool_list = ges.run_evolutionary_search(boxes=boxes, pool_size=10, num_generations=5, growth_rate=0.2, mutate_rate=0.2, sample_and_eval=sample_and_eval, mutate_and_eval=mutate_and_eval, eval_fitness=eval_fitness)
 	print(pool_list)
 	for box, pool in zip(boxes, pool_list):
 		print("Box:", box)
 		for p in pool:
-			print(pool[p])
+			print(p[0])
 
 	with open("pooled_evolutionary_co_search_1.pickle", "wb") as f:
 		pickle.dump(pool_list, f)
