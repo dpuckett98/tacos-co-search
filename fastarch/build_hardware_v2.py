@@ -12,6 +12,10 @@ class Hardware:
 		self.off_chip_bandwidth = off_chip_bandwidth
 		self.on_chip_bandwidth = on_chip_bandwidth
 		self.total_sram_size = total_sram_size
+		
+		# in pJ/op or pJ/elem accessed
+		self.unit_energy_MAC = 0.1430
+		self.unit_energy_DRAM = 200
 	
 	def get_single_lane_bandwidth(self):
 		return self.off_chip_bandwidth / self.num_PE_lanes

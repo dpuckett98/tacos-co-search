@@ -6,20 +6,32 @@ from fastarch.dataflow_enc_dec import run_MM_dataflow
 import fastarch.build_models_v2 as models
 import fastarch.build_hardware_v2 as hw
 import fastarch.dataflow_estimator as de
+import fastarch.conv_helper as ch
+import fastarch.dataflow_convolution as dc
+import fastarch.dataflow_estimator_conv as dec
 
 # hardware is from build_hardware.py
 # layer is from build_models_v2.py
 # params: [split_dim, dataflow, ta, tb, tw, ca, cb, cw]
 # 	split_dim is either "rows" or "cols" and controls whether the matrix mult is divided among the PE lanes by A rows or by B cols ("None" is the typical 1 PE lane option)
+# returns [cycles, power, memory idle cycles, offload cycles]
 def run_layer(hardware, params, layer, preload_cycles=0, pipeline_offloading=False, generate_sparse_map=True, estimate=False, memory_initial_size=0):
 	hardware.print()
 	layer.print()
 	print(params)
 	
+	# handle convs separately
+	if isinstance(layer, ch.ConvLayer):
+		cycles, power = dec.estimate_performance(hardware, layer, params)
+		if estimate:
+			return [cycles, power, -1, -1, -1]
+		res = dc.run_conv_dataflow(hardware, layer, params)
+		return [res[0], power, res[4], res[5], res[6]]
+	
 	# handle estimate
+	cycles, power = de.estimate_performance(hardware, layer, params)
 	if estimate:
-		cycles = de.estimate_performance(hardware, layer, params)
-		return [cycles, -1, -1, -1, -1]
+		return [cycles, power, -1, -1, -1]
 	
 	# inner matrix mult
 	
@@ -79,14 +91,62 @@ def run_layer(hardware, params, layer, preload_cycles=0, pipeline_offloading=Fal
 	
 	res = run_MM_dataflow(num_PEs=hardware.num_PEs_per_lane, num_RFs_per_PE=hardware.num_RFs_per_PE, size_RF=hardware.size_RF, off_chip_bandwidth=hardware.get_single_lane_bandwidth(), on_chip_bandwidth=hardware.on_chip_bandwidth, max_sram_size=hardware.get_single_lane_SRAM_size(), A_rows=A_rows, A_cols_B_rows=A_cols_B_rows, B_cols=B_cols, dataflow=params[1], t_a=t_a, t_b=t_b, t_w=t_w, c_a=params[5], c_b=params[6], c_w=params[7], estimate=estimate, sparsity=layer.sparsity, preload_cycles=preload_cycles, pipeline_offloading=pipeline_offloading, share_load=share_load, num_PE_lanes=hardware.num_PE_lanes, A_transfer_scale=layer.A_transfer_scale, B_transfer_scale=layer.B_transfer_scale, O_transfer_scale=layer.O_transfer_scale, num_heads=layer.num_heads, load_immediate=layer.load_immediate, store_immediate=layer.store_immediate, sparse_map=sparse_map) #, memory_target_size=hardware.total_sram_size, memory_initial_size=memory_initial_size)
 	print(res[1], hardware.num_PE_lanes)
-	return [res[0], res[1] * hardware.num_PE_lanes, res[4], res[5], res[6]]
+	return [res[0], power, res[4], res[5], res[6]]
 
 def run_layer_set_no_pipelining(hardware, params, layer_set, estimate=False):
 	for idx, (layer, _) in enumerate(layer_set.unique_layers):
-		cycles, dram_accesses, _, _, _ = run_layer(hardware, params[idx], layer, preload_cycles=0, pipeline_offloading=False, estimate=estimate)
+		cycles, power, _, _, _ = run_layer(hardware, params[idx], layer, preload_cycles=0, pipeline_offloading=False, estimate=estimate)
 		layer_set.update_layer_latency(layer, cycles)
-		layer_set.update_layer_dram_accesses(layer, dram_accesses)
+		layer_set.power += power
+		#layer_set.update_layer_dram_accesses(layer, dram_accesses)
 	print(layer_set.get_string_stats(hardware.num_PE_lanes * hardware.num_PEs_per_lane, hardware.on_chip_bandwidth, params))
+
+# hardware is from build_hardware.py
+# layer_set is from build_models_v2.py
+# params: list, where each element is a list: [split_dim, dataflow, ta, tb, tw, ca, cb, cw]
+def run_layer_set(hardware, params, layer_set, init_preload_cycles=0):
+	prev_preload_cycles = init_preload_cycles
+	prev_layer = None
+	prev_layer_cycles = 0
+	prev_offload_cycles = 0
+	for idx, layer in enumerate(layer_set.layers):
+		print("***" * 10)
+		print("Layer", idx, "out of", len(layer_set.layers))
+		print("***" * 10)
+		cycles, power, mem_idle, offload_cycles, offload_size = run_layer(hardware, params[idx], layer, preload_cycles=prev_preload_cycles, pipeline_offloading=True)
+		# if the previous offloading cycles can be fit into the memory idle time of the current layer
+		if prev_offload_cycles <= mem_idle:
+			# give the rest of the mem idle cycles to the next layer to preload
+			prev_preload_cycles = mem_idle - prev_offload_cycles
+			print("Offload cycles from previous layer fit! Preload cycles for next layer:", prev_preload_cycles)
+		else:
+			# if the previous offloading cycles don't fit into the memory idle time of the current layer...
+			# no preloading
+			prev_preload_cycles = 0
+			# increase the latency of the previous layer by the number of offloading cycles that didn't fit into the current layer's memory idle time
+			prev_layer.actual_cycles = prev_layer_cycles + prev_offload_cycles - mem_idle
+			#layer_set.update_layer_latency(prev_layer, prev_layer_cycles + prev_offload_cycles - mem_idle)
+			print("Offload cycles from previous layer didn't fit :( Increased latency of previous layer by:", prev_offload_cycles - mem_idle)
+		
+		# update the latency of the current layer
+		layer.actual_cycles = cycles
+		layer_set.power += power
+		#layer.actual_memory_accesses = dram_accesses
+		#layer_set.update_layer_latency(layer, cycles)
+		#layer_set.update_layer_dram_accesses(layer, dram_accesses)
+		
+		# update vars
+		prev_layer = layer
+		prev_layer_cycles = cycles
+		prev_offload_cycles = offload_cycles
+	
+	# last layer can't offload cycles, so just sit and take it
+	prev_layer.actual_cycles = prev_layer_cycles + prev_offload_cycles
+	#layer_set.update_layer_latency(prev_layer, prev_layer_cycles + prev_offload_cycles)
+	
+	print(layer_set.get_string_stats(hardware.num_PE_lanes * hardware.num_PEs_per_lane, hardware.on_chip_bandwidth, params))
+	
+	return layer_set
 
 # hardware is from build_hardware.py
 # layer_set is from build_models_v2.py
@@ -95,25 +155,29 @@ def run_layer_set_no_pipelining(hardware, params, layer_set, estimate=False):
 	# prev_preload_cycles = init_preload_cycles
 	# prev_layer = None
 	# prev_layer_cycles = 0
-	# prev_offload_cycles = 0
+	# prev_offload_size = 0
 	# for idx, layer in enumerate(layer_set.layers):
 		# print("***" * 10)
 		# print("Layer", idx, "out of", len(layer_set.layers))
 		# print("***" * 10)
-		# cycles, dram_accesses, mem_idle, offload_cycles, offload_size = run_layer(hardware, params[idx], layer, preload_cycles=prev_preload_cycles, pipeline_offloading=True)
+		# cycles, dram_accesses, mem_idle, offload_cycles, offload_size = run_layer(hardware, params[idx], layer, preload_cycles=prev_preload_cycles, pipeline_offloading=True, memory_initial_size=prev_offload_size)
+		
+		# prev_offload_size = offload_size
+		# prev_preload_cycles = mem_idle
+		
 		# # if the previous offloading cycles can be fit into the memory idle time of the current layer
-		# if prev_offload_cycles <= mem_idle:
+		# #if prev_offload_cycles <= mem_idle:
 			# # give the rest of the mem idle cycles to the next layer to preload
-			# prev_preload_cycles = mem_idle - prev_offload_cycles
-			# print("Offload cycles from previous layer fit! Preload cycles for next layer:", prev_preload_cycles)
-		# else:
+		# #	prev_preload_cycles = mem_idle - prev_offload_cycles
+		# #	print("Offload cycles from previous layer fit! Preload cycles for next layer:", prev_preload_cycles)
+		# #else:
 			# # if the previous offloading cycles don't fit into the memory idle time of the current layer...
 			# # no preloading
-			# prev_preload_cycles = 0
+		# #	prev_preload_cycles = 0
 			# # increase the latency of the previous layer by the number of offloading cycles that didn't fit into the current layer's memory idle time
-			# prev_layer.actual_cycles = prev_layer_cycles + prev_offload_cycles - mem_idle
+		# #	prev_layer.actual_cycles = prev_layer_cycles + prev_offload_cycles - mem_idle
 			# #layer_set.update_layer_latency(prev_layer, prev_layer_cycles + prev_offload_cycles - mem_idle)
-			# print("Offload cycles from previous layer didn't fit :( Increased latency of previous layer by:", prev_offload_cycles - mem_idle)
+		# #	print("Offload cycles from previous layer didn't fit :( Increased latency of previous layer by:", prev_offload_cycles - mem_idle)
 		
 		# # update the latency of the current layer
 		# layer.actual_cycles = cycles
@@ -133,56 +197,6 @@ def run_layer_set_no_pipelining(hardware, params, layer_set, estimate=False):
 	# print(layer_set.get_string_stats(hardware.num_PE_lanes * hardware.num_PEs_per_lane, hardware.on_chip_bandwidth, params))
 	
 	# return layer_set
-
-# hardware is from build_hardware.py
-# layer_set is from build_models_v2.py
-# params: list, where each element is a list: [split_dim, dataflow, ta, tb, tw, ca, cb, cw]
-def run_layer_set(hardware, params, layer_set, init_preload_cycles=0):
-	prev_preload_cycles = init_preload_cycles
-	prev_layer = None
-	prev_layer_cycles = 0
-	prev_offload_size = 0
-	for idx, layer in enumerate(layer_set.layers):
-		print("***" * 10)
-		print("Layer", idx, "out of", len(layer_set.layers))
-		print("***" * 10)
-		cycles, dram_accesses, mem_idle, offload_cycles, offload_size = run_layer(hardware, params[idx], layer, preload_cycles=prev_preload_cycles, pipeline_offloading=True, memory_initial_size=prev_offload_size)
-		
-		prev_offload_size = offload_size
-		prev_preload_cycles = mem_idle
-		
-		# if the previous offloading cycles can be fit into the memory idle time of the current layer
-		#if prev_offload_cycles <= mem_idle:
-			# give the rest of the mem idle cycles to the next layer to preload
-		#	prev_preload_cycles = mem_idle - prev_offload_cycles
-		#	print("Offload cycles from previous layer fit! Preload cycles for next layer:", prev_preload_cycles)
-		#else:
-			# if the previous offloading cycles don't fit into the memory idle time of the current layer...
-			# no preloading
-		#	prev_preload_cycles = 0
-			# increase the latency of the previous layer by the number of offloading cycles that didn't fit into the current layer's memory idle time
-		#	prev_layer.actual_cycles = prev_layer_cycles + prev_offload_cycles - mem_idle
-			#layer_set.update_layer_latency(prev_layer, prev_layer_cycles + prev_offload_cycles - mem_idle)
-		#	print("Offload cycles from previous layer didn't fit :( Increased latency of previous layer by:", prev_offload_cycles - mem_idle)
-		
-		# update the latency of the current layer
-		layer.actual_cycles = cycles
-		layer.actual_memory_accesses = dram_accesses
-		#layer_set.update_layer_latency(layer, cycles)
-		#layer_set.update_layer_dram_accesses(layer, dram_accesses)
-		
-		# update vars
-		prev_layer = layer
-		prev_layer_cycles = cycles
-		prev_offload_cycles = offload_cycles
-	
-	# last layer can't offload cycles, so just sit and take it
-	prev_layer.actual_cycles = prev_layer_cycles + prev_offload_cycles
-	#layer_set.update_layer_latency(prev_layer, prev_layer_cycles + prev_offload_cycles)
-	
-	print(layer_set.get_string_stats(hardware.num_PE_lanes * hardware.num_PEs_per_lane, hardware.on_chip_bandwidth, params))
-	
-	return layer_set
 
 def test():
 	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=10, size_RF=10, off_chip_bandwidth=5, on_chip_bandwidth=10, total_sram_size=140*140*3)
@@ -229,10 +243,13 @@ def run_query_key_encoder():
 	print("Decoder for Attention Score:", run_layer(hardware, params, layer, preload_cycles=0, pipeline_offloading=False))
 
 def run_deit_tiny(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77):
-	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=bw, on_chip_bandwidth=10, total_sram_size=140*140*3)
+	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=bw, on_chip_bandwidth=100, total_sram_size=140*140*3)
 	model = models.get_DeiT_Tiny(1, comp_ratio, comp_ratio, sparsity)
 	layer_set = models.model_to_layer_set(model)
 	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.layers))]
+	for i in range(len(layer_set.layers)):
+		if isinstance(layer_set.layers[i], ch.ConvLayer):
+			params[i] = ["rows", "co", "ci", "y", "x", 120, 120, 5, 8, "x", "y", "ci", "kx", "ky", "co", 7, 1, 3, 4, 1, 1]
 	if pipelining:
 		run_layer_set(hardware, params, layer_set)
 	else:
@@ -266,6 +283,9 @@ def run_levit_128(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77, ViTCoD=F
 	model = models.get_LeViT_128(1, comp_ratio, comp_ratio, sparsity, ViTCoD)
 	layer_set = models.model_to_layer_set(model)
 	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.layers))]
+	for i in range(len(layer_set.layers)):
+		if isinstance(layer_set.layers[i], ch.ConvLayer):
+			params[i] = ["rows", "co", "ci", "y", "x", 120, 120, 5, 8, "x", "y", "ci", "kx", "ky", "co", 7, 1, 3, 4, 1, 1]
 	if pipelining:
 		run_layer_set(hardware, params, layer_set)
 	else:

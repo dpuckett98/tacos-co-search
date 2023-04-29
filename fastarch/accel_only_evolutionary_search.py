@@ -1,11 +1,11 @@
 import random
 import math
 
-import generic_evolutionary_search as ges
-import random_search as rs
-import build_models_v2 as bm
-import build_hardware_v2 as bh
-import dataflow_wrapper as dw
+import fastarch.generic_evolutionary_search as ges
+import fastarch.random_search as rs
+import fastarch.build_models_v2 as bm
+import fastarch.build_hardware_v2 as bh
+import fastarch.dataflow_wrapper as dw
 
 # global settings
 num_PEs = 512

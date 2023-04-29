@@ -4,6 +4,7 @@ import math
 from fastarch.dataflow_wrapper import run_layer, run_layer_set
 from fastarch.build_hardware_v2 import Hardware
 from fastarch.build_models_v2 import LayerSet, model_to_layer_set, get_DeiT_Tiny, get_DeiT_Small, get_DeiT_Base, get_test, get_LeViT_128, get_LeViT_192, get_LeViT_256, create_nasvit_supernet, create_nasvit_smallest
+import fastarch.conv_helper as ch
 
 # search function
 # Inputs:
@@ -166,6 +167,9 @@ def generate_hardware_configs(total_num_PEs, total_memory, clock_speed, bandwidt
 
 # generates a random parameter set given a specific hw and layer
 def generate_random_param(hw, layer, count):
+	if isinstance(layer, ch.ConvLayer):
+		return ch.generate_random_param(hw, layer, count)
+	
 	results = []
 	
 	tiling_choices_rows = []
