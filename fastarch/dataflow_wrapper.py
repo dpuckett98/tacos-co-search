@@ -14,7 +14,7 @@ import fastarch.dataflow_estimator_conv as dec
 # layer is from build_models_v2.py
 # params: [split_dim, dataflow, ta, tb, tw, ca, cb, cw]
 # 	split_dim is either "rows" or "cols" and controls whether the matrix mult is divided among the PE lanes by A rows or by B cols ("None" is the typical 1 PE lane option)
-# returns [cycles, power, memory idle cycles, offload cycles]
+# returns [cycles, power, memory idle cycles, offload cycles] if estimate=False; otherwise, returns [compute_cycles, mem_cycles, power]
 def run_layer(hardware, params, layer, preload_cycles=0, pipeline_offloading=False, generate_sparse_map=True, estimate=False, memory_initial_size=0):
 	hardware.print()
 	layer.print()
@@ -22,16 +22,16 @@ def run_layer(hardware, params, layer, preload_cycles=0, pipeline_offloading=Fal
 	
 	# handle convs separately
 	if isinstance(layer, ch.ConvLayer):
-		cycles, power = dec.estimate_performance(hardware, layer, params)
+		compute_cycles, mem_cycles, power = dec.estimate_performance(hardware, layer, params)
 		if estimate:
-			return [cycles, power, -1, -1, -1]
+			return [compute_cycles, mem_cycles, power]
 		res = dc.run_conv_dataflow(hardware, layer, params)
 		return [res[0], power, res[4], res[5], res[6]]
 	
 	# handle estimate
-	cycles, power = de.estimate_performance(hardware, layer, params)
+	compute_cycles, mem_cycles, power = de.estimate_performance(hardware, layer, params)
 	if estimate:
-		return [cycles, power, -1, -1, -1]
+		return [compute_cycles, mem_cycles, power]
 	
 	# inner matrix mult
 	

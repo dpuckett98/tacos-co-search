@@ -305,7 +305,7 @@ def estimate_performance(hardware, layer, params):
 	bandwidth_bound_cycles, accesses = bandwidth_bound_estimate(hardware, layer, params)
 	#print("Compute cycles:", compute_bound_cycles)
 	#print("Load/Store cycles:", bandwidth_bound_cycles)
-	return [max(compute_bound_cycles, bandwidth_bound_cycles), accesses * hardware.unit_energy_DRAM + layer.get_flops_including_extras() * hardware.unit_energy_MAC]
+	return [compute_bound_cycles, bandwidth_bound_cycles, accesses * hardware.unit_energy_DRAM + layer.get_flops_including_extras() * hardware.unit_energy_MAC]
 
 def test():
 	hardware = bh.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=20, on_chip_bandwidth=10, total_sram_size=320000//2 - 512*11*10)

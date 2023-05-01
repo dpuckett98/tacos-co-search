@@ -12,11 +12,12 @@ num_PEs = 512
 on_chip_memory = 320000 // 2
 clock_speed = 0.5
 bandwidth = 77
-model = bm.get_LeViT_128(1, 1.0, 1.0, 0.0, ViTCoD=True)
+model = bm.get_DeiT_Tiny(1, 1.0, 1.0, 0.0)
+#model = bm.get_LeViT_128(1, 1.0, 1.0, 0.0, ViTCoD=True)
 layer_set = bm.model_to_layer_set(model)
 
 # search parameters
-param_search_iters = 50
+param_search_iters = 2
 PE_lane_options = [4, 8, 16]
 num_RFs_options = [i for i in range(2, 21)]
 size_RFs_options = [i for i in range(1, 21)]
@@ -29,7 +30,8 @@ def sample_and_eval():
 	
 	# generate params
 	param_list = []
-	total_cycles = 0
+	total_compute_cycles = 0
+	total_memory_cycles = 0
 	total_dram_accesses = 0
 	for i, (layer, count) in enumerate(layer_set.unique_layers):
 		print("***"*7)
@@ -37,10 +39,13 @@ def sample_and_eval():
 		layer.print()
 		print("***"*7)
 	
-		params, cycles, dram_accesses = rs.search_single_layer(hw_config, layer, param_search_iters, 1, rs.latency_cost)
+		params, compute_cycles, memory_cycles, dram_accesses = rs.search_single_layer(hw_config, layer, param_search_iters, 1, rs.latency_cost)
 		param_list.append(params)
-		total_cycles += cycles * count
+		total_compute_cycles += compute_cycles * count
+		total_memory_cycles += memory_cycles * count
 		total_dram_accesses += dram_accesses * count
+	
+	total_cycles = max(total_compute_cycles, total_memory_cycles)
 	
 	return [[total_cycles, total_dram_accesses], [hw_config, param_list]]
 
@@ -71,7 +76,8 @@ def mutate_and_eval(entity, mutate_rate):
 	
 	# regenerate params
 	param_list = []
-	total_cycles = 0
+	total_compute_cycles = 0
+	total_memory_cycles = 0
 	total_dram_accesses = 0
 	for i, (layer, count) in enumerate(layer_set.unique_layers):
 		print("***"*7)
@@ -79,10 +85,13 @@ def mutate_and_eval(entity, mutate_rate):
 		layer.print()
 		print("***"*7)
 	
-		params, cycles, dram_accesses = rs.search_single_layer(hw_config, layer, param_search_iters, 1, rs.latency_cost)
+		params, compute_cycles, memory_cycles, dram_accesses = rs.search_single_layer(hw_config, layer, param_search_iters, 1, rs.latency_cost)
 		param_list.append(params)
-		total_cycles += cycles * count
+		total_compute_cycles += compute_cycles * count
+		total_memory_cycles += memory_cycles * count
 		total_dram_accesses += dram_accesses * count
+	
+	total_cycles = max(total_compute_cycles, total_memory_cycles)
 	
 	return [[total_cycles, total_dram_accesses], [hw_config, param_list]]
 
@@ -91,7 +100,7 @@ def eval_fitness(entity):
 	return entity[0][0]
 
 def test():
-	pool = ges.run_evolutionary_search(pool_size=5, num_generations=5, growth_rate=0.2, mutate_rate=0.5, sample_and_eval=sample_and_eval, mutate_and_eval=mutate_and_eval, eval_fitness=eval_fitness)
+	pool = ges.run_evolutionary_search(pool_size=2, num_generations=1, growth_rate=0.2, mutate_rate=0.5, sample_and_eval=sample_and_eval, mutate_and_eval=mutate_and_eval, eval_fitness=eval_fitness)
 	print(pool)
 	for p in pool:
 		print(p[0])

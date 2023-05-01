@@ -76,7 +76,8 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 	print("***"*5)
 	
 	param_list = []
-	cycles_list = []
+	compute_cycles_list = []
+	memory_cycles_list = []
 	dram_accesses_list = []
 	score_list = []
 	
@@ -84,11 +85,12 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 	
 	for i in range(est_iterations):
 		param = all_params[i]
-		cycles, dram_accesses, _, _, _ = run_layer(hw, param, layer, estimate=True)
-		score = cost_function(cycles, dram_accesses)
+		compute_cycles, memory_cycles, dram_accesses = run_layer(hw, param, layer, estimate=True)
+		score = cost_function(max(compute_cycles, memory_cycles), dram_accesses)
 		
 		param_list.append(param)
-		cycles_list.append(cycles)
+		compute_cycles_list.append(compute_cycles)
+		memory_cycles_list.append(memory_cycles)
 		dram_accesses_list.append(dram_accesses)
 		score_list.append(score)
 	
@@ -97,7 +99,7 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 	print("***"*5)
 	
 	# find the best estimates
-	combined = sorted(zip(score_list, param_list, cycles_list, dram_accesses_list), reverse=True)
+	combined = sorted(zip(score_list, param_list, compute_cycles_list, memory_cycles_list, dram_accesses_list), reverse=True)
 	#print(combined)
 	# rerun the full_iterations best estimates & return the best one
 	best_param = None
@@ -127,11 +129,12 @@ def search_single_layer(hw, layer, est_iterations, full_iterations, cost_functio
 				best_score = score
 	else:
 		best_param = combined[0][1]
-		best_cycles = combined[0][2]
-		best_dram_accesses = combined[0][3]
+		best_compute_cycles = combined[0][2]
+		best_memory_cycles = combined[0][3]
+		best_dram_accesses = combined[0][4]
 		best_score = combined[0][0]
 	
-	return [best_param, best_cycles, best_dram_accesses]
+	return [best_param, best_compute_cycles, best_memory_cycles, best_dram_accesses]
 
 # generates all possible hardware configs; returns list of Hardware
 def generate_hardware_configs(total_num_PEs, total_memory, clock_speed, bandwidth):

@@ -426,7 +426,7 @@ def estimate_performance(hardware, layer, params):
 	#print(total_accesses, memory_cycles)
 	final_cycles = max(total_cycles, memory_cycles)
 	
-	return [final_cycles, total_accesses * hardware.unit_energy_DRAM + layer.get_flops() * hardware.unit_energy_MAC]
+	return [total_cycles, memory_cycles, total_accesses * hardware.unit_energy_DRAM + layer.get_flops() * hardware.unit_energy_MAC]
 
 def bandwidth_bound_estimate(hardware, layer, params, count_offload=True):
 	# static variables
