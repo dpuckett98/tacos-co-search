@@ -144,10 +144,7 @@ def fast_compute_bound_estimate(hardware, layer, params):
 	abw_short_cycles = num_abw_short * _calc_chunks(short_t_a, short_t_b, short_t_w, params[5], params[6], params[7], hardware.num_PEs_per_lane, layer.sparsity)
 	
 	return reg_cycles + a_short_cycles + b_short_cycles + w_short_cycles + ab_short_cycles + aw_short_cycles + wb_short_cycles + abw_short_cycles
-	
-	
 
-# TODO: this still takes a couple seconds with large layers, so I want to get rid of the loops; treat each case (e.g. x of regular size, 1 of diminished size for each tile/chunk parameter)
 def compute_bound_estimate(hardware, layer, params):
 	# static variables
 	chunk_startup_cost = 1
@@ -308,7 +305,7 @@ def estimate_performance(hardware, layer, params):
 	bandwidth_bound_cycles, accesses = bandwidth_bound_estimate(hardware, layer, params)
 	#print("Compute cycles:", compute_bound_cycles)
 	#print("Load/Store cycles:", bandwidth_bound_cycles)
-	return max(compute_bound_cycles, bandwidth_bound_cycles) #, accesses
+	return [compute_bound_cycles, bandwidth_bound_cycles, accesses * hardware.unit_energy_DRAM + layer.get_flops_including_extras() * hardware.unit_energy_MAC]
 
 def test():
 	hardware = bh.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=20, on_chip_bandwidth=10, total_sram_size=320000//2 - 512*11*10)

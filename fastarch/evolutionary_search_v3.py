@@ -5,6 +5,7 @@ from fastarch.dataflow_wrapper import run_layer, run_layer_set
 from fastarch.build_hardware_v2 import Hardware
 from fastarch.build_models_v2 import LayerSet, model_to_layer_set, get_DeiT_Tiny, get_DeiT_Small, get_DeiT_Base, get_test, get_LeViT_128, get_LeViT_192, get_LeViT_256, create_nasvit_supernet, create_nasvit_smallest
 from fastarch.random_search import generate_hardware_configs, generate_random_param, evaluate_results, latency_cost
+import fastarch.conv_helper as ch
 
 # search function
 # Inputs:
@@ -167,6 +168,9 @@ def generate_hardware_configs(total_num_PEs, total_memory, clock_speed, bandwidt
 
 # generates a random parameter set given a specific hw and layer
 def generate_random_param(hw, layer, count):
+	if isinstance(layer, ch.ConvLayer):
+		return ch.generate_random_param(hw, layer, count)
+
 	results = []
 	
 	tiling_choices_rows = []
@@ -244,7 +248,7 @@ def latency_cost(cycles, dram_accesses):
 
 def search_model(model, est_iterations, full_iterations):
 	layer_set = model_to_layer_set(model)
-	hw, params, cycles, dram_accesses = run_search(512, 320000 // 2, 0.5, 77, layer_set, est_iterations, full_iterations, latency_cost)
+	hw, params, cycles, dram_accesses = run__evolutionary_search(512, 320000 // 2, 0.5, 77, layer_set, est_iterations, full_iterations, latency_cost)
 	print("***" * 10)
 	
 	#layer_set = evaluate_results(hw, params, layer_set)
@@ -269,6 +273,7 @@ def test():
 	print(generate_random_param(res[-1], layer_set.layers[0]))
 
 if __name__ == "__main__":
-	model = create_nasvit_supernet(1, 1.0, 1.0, 0.0)
+	#model = create_nasvit_supernet(1, 1.0, 1.0, 0.0)
+	model = get_DeiT_Tiny(1, 1.0, 1.0, 0.0)
 	#model = get_test(1) #get_DeiT_Tiny(1, 0.5, 0.5, 0.9)
 	search_model(model, 50, 1)

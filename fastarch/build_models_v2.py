@@ -1,6 +1,8 @@
 import math
 import matplotlib.pyplot as plt
 
+import fastarch.conv_helper as ch
+
 class Model:
 
 	def __init__(self, batch_size, name=""):
@@ -119,6 +121,8 @@ class Layer:
 		#if "part" in self.flags.keys() and "part" in other.flags.keys():
 		#	if self.flags["part"] != other.flags["part"]:
 		#		return False
+		if not isinstance(other, Layer):
+			return False
 		return self.A_rows == other.A_rows and self.A_cols_B_rows == other.A_cols_B_rows and self.B_cols == other.B_cols and self.sparsity == other.sparsity #and self.flags["type"] == other.flags["type"]
 	
 	def get_flops(self):
@@ -177,6 +181,7 @@ class LayerSet:
 	def __init__(self, layers, model_name=""):
 		self.layers = layers
 		self.model_name = model_name
+		self.power = -1
 		
 		# generate unique layers
 		self.unique_layers = []
@@ -290,6 +295,7 @@ class LayerSet:
 		descrip += "Total cycles: " + str(self.get_total_cycles()) + "\n"
 		descrip += "Average utilization: {:.2f}%\n".format(self.get_utilization(num_PEs))
 		descrip += "Average mem utilization: {:.2f}%\n".format(self.get_mem_utilization(elems_per_cycle))
+		descrip += "Power: {:.2f}%\n".format(self.power)
 		descrip += "Number of layers: " + str(len(self.layers)) + "\n"
 		descrip += "Number of unique layers: " + str(len(self.unique_layers)) + "\n"
 		for layer, p in zip(self.unique_layers, params):
@@ -309,14 +315,16 @@ def model_to_layer_set(model):
 		if layer_descrip["type"] == "linear":
 			layers.append(Layer(layer_descrip["batch_size"] * layer_descrip["in_rows"], layer_descrip["in_elements"], layer_descrip["out_elements"], B_weights=True, flags={"type":"linear"}))
 		elif layer_descrip["type"] == "convolution":
-			# convert convolution to matrix mult - more data accesses, but same FLOPS
-			out_width = (layer_descrip["in_width"] - layer_descrip["filter_dim"] + layer_descrip["step_size"]) // layer_descrip["step_size"]
-			out_height = (layer_descrip["in_height"] - layer_descrip["filter_dim"] + layer_descrip["step_size"]) // layer_descrip["step_size"]
-			A_rows = out_width * out_height
-			A_cols_B_rows = layer_descrip["filter_dim"] * layer_descrip["filter_dim"] * layer_descrip["in_channels"]
-			B_cols = layer_descrip["out_channels"]
 			for i in range(layer_descrip["batch_size"]):
-				layers.append(Layer(A_rows, A_cols_B_rows, B_cols, init_weights = layer_descrip["out_channels"] * layer_descrip["filter_dim"]**2 * layer_descrip["in_channels"], flags={"type":"convolution"}))
+				layers.append(ch.ConvLayer(layer_descrip["in_height"], layer_descrip["in_width"], layer_descrip["in_channels"], layer_descrip["out_channels"], layer_descrip["filter_dim"], layer_descrip["step_size"], flags={"type":"convolution"}))
+			# [OLD] convert convolution to matrix mult - more data accesses, but same FLOPS
+			#out_width = (layer_descrip["in_width"] - layer_descrip["filter_dim"] + layer_descrip["step_size"]) // layer_descrip["step_size"]
+			#out_height = (layer_descrip["in_height"] - layer_descrip["filter_dim"] + layer_descrip["step_size"]) // layer_descrip["step_size"]
+			#A_rows = out_width * out_height
+			#A_cols_B_rows = layer_descrip["filter_dim"] * layer_descrip["filter_dim"] * layer_descrip["in_channels"]
+			#B_cols = layer_descrip["out_channels"]
+			#for i in range(layer_descrip["batch_size"]):
+			#	layers.append(Layer(A_rows, A_cols_B_rows, B_cols, init_weights = layer_descrip["out_channels"] * layer_descrip["filter_dim"]**2 * layer_descrip["in_channels"], flags={"type":"convolution"}))
 		elif layer_descrip["type"] == "attention":
 			for i in range(layer_descrip["batch_size"]):
 				# computing Q
@@ -373,7 +381,7 @@ def model_to_layer_set(model):
 			
 			# multiply by value vectors
 			for i in range(layer_descrip["batch_size"] * layer_descrip["num_heads"]):
-				layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["in_tokens"], layer_descrip["feature_dim"] * layer_descrip["expand_ratio"], sparsity=layer_descrip["sparsity"], flags={"type":"attention", "part":"score * V"}))
+				layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["in_tokens"], layer_descrip["feature_dim"] * layer_descrip["expand_ratio"], flags={"type":"attention", "part":"score * V"}))
 			
 			# out MLP (DeiT and Transformer include this in MHA)
 			for i in range(layer_descrip["batch_size"]):

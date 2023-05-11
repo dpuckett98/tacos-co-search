@@ -94,7 +94,7 @@ class MemoryControllerNode(Node):
 	def give_save_chunk_request(self, chunk_name):
 		#del self.chunks[chunk_name]
 		#assert self.chunks[chunk_name].full == True
-		if not chunk_name in self.save_chunk_requests:
+		if not chunk_name in self.save_chunk_requests and chunk_name in self.chunks and self.chunks[chunk_name].max_size > 0:
 			#if chunk_name == "O_38_81":
 			#	print("Saving chunk O_38_81")
 			self.save_chunk_requests.append(chunk_name)
@@ -141,6 +141,8 @@ class MemoryControllerNode(Node):
 				chunk.remove_data(amt_to_remove)
 				if chunk.empty:
 					del self.save_chunk_queue[0]
+					#if not chunk in self.load_chunk_queue:
+					#	del self.chunks[chunk.name]
 				amount -= amt_to_remove
 			
 			'''
@@ -165,6 +167,7 @@ class MemoryControllerNode(Node):
 		if port_name == "DRAM_in":
 			#print("Total amount received:", amount, "amount left:")
 			self.actual_input_bandwidth_used += amount
+			
 			while amount > 0:
 				if len(self.load_chunk_queue) == 0:
 					#print("Load queue is empty with", amount, "left")
@@ -202,7 +205,17 @@ class MemoryControllerNode(Node):
 			self.port_chunks[port_name].add_data(amount)
 	
 	def step_request(self, current_cycle):
-		
+		#a_count = 0
+		#b_count = 0
+		#o_count = 0
+		#for chunk in self.chunks:
+		#	if chunk[0] == "A":
+		#		a_count += 1
+		#	if chunk[0] == "B":
+		#		b_count += 1
+		#	if chunk[0] == "O":
+		#		o_count += 1
+		#print(a_count, b_count, o_count)
 		# v3, new behavior: all of the DRAM bandwidth is used to load or all is used to store. Loading takes priority over storing
 		
 		if self.load_immediate:
@@ -218,14 +231,23 @@ class MemoryControllerNode(Node):
 					self.in_turn = False
 			
 			if self.in_turn:
-				
+
+				# remove any empty chunks
+				to_remove = []
+				for chunk in self.load_chunk_queue:
+					if chunk.max_size == 0:
+						to_remove.append(chunk)
+				for i in to_remove:
+					self.load_chunk_queue.remove(i)
+
 				# first check any input requests
 				if len(self.load_chunk_queue) > 0:
 					#for chunk in self.load_chunk_queue:
 					#	chunk.make_full()
 					#self.load_chunk_queue.clear()
-					print(self.load_chunk_queue[0].name)
+					print(self.load_chunk_queue[0].name, len(self.load_chunk_queue), self.load_chunk_queue[0].transfer_scale)
 					print(self.load_chunk_queue[0].current_size, self.load_chunk_queue[0].max_size)
+					print(self.ports["DRAM_in"].is_current_request())
 				assert len(self.load_chunk_queue) == 0
 				total_size = 0
 				for chunk in self.chunks.values():
@@ -296,6 +318,14 @@ class MemoryControllerNode(Node):
 						for chunk in self.chunks.values():
 							if chunk.empty and chunk.source_is_dram:
 								chunk.make_full()
+					
+					# remove any empty chunks
+					to_remove = []
+					for chunk in self.load_chunk_queue:
+						if chunk.max_size == 0:
+							to_remove.append(chunk)
+					for i in to_remove:
+						self.load_chunk_queue.remove(i)
 					
 					if len(self.load_chunk_queue) > 0:
 						#for chunk in self.load_chunk_queue:

@@ -1,8 +1,9 @@
 import math
+import matplotlib.pyplot as plt
 
-import build_models_v2 as bm
-import build_hardware_v2 as bh
-import dataflow_wrapper as dw
+import fastarch.build_models_v2 as bm
+import fastarch.build_hardware_v2 as bh
+import fastarch.dataflow_wrapper as dw
 
 def examine_nasvit_results():
 	supernet_sparsity_params = [['rows', 'Output-Stationary', 4024, 6, 21, 6, 4, 10], ['rows', 'Output-Stationary', 6287, 1, 15, 8, 2, 10], ['rows', 'A-Stationary', 6346, 4, 13, 1, 9, 10], ['cols', 'Output-Stationary', 3145, 20, 12, 5, 5, 10], ['rows', 'A-Stationary', 4129, 1, 25, 3, 7, 10], ['cols', 'Output-Stationary', 1066, 19, 79, 8, 2, 10], ['cols', 'Output-Stationary', 1232, 71, 12, 9, 1, 10], ['cols', 'A-Stationary', 1263, 16, 64, 4, 6, 10], ['rows', 'A-Stationary', 1296, 1, 9, 9, 1, 10], ['cols', 'B-Stationary', 1, 48, 192, 6, 4, 10], ['cols', 'B-Stationary', 1, 192, 48, 9, 1, 10], ['cols', 'B-Stationary', 788, 22, 100, 2, 8, 10], ['cols', 'Output-Stationary', 542, 159, 32, 5, 5, 10], ['cols', 'A-Stationary', 1, 64, 240, 9, 1, 10], ['cols', 'Output-Stationary', 1, 240, 64, 7, 3, 10], ['cols', 'A-Stationary', 362, 27, 234, 9, 1, 10], ['cols', 'A-Stationary', 324, 1, 9, 4, 6, 10], ['cols', 'Output-Stationary', 309, 69, 212, 2, 8, 10], ['cols', 'Output-Stationary', 324, 72, 72, 8, 2, 10], ['cols', 'A-Stationary', 322, 289, 8, 4, 6, 10], ['cols', 'Output-Stationary', 299, 218, 67, 9, 1, 10], ['cols', 'Output-Stationary', 8307, 8, 5, 2, 8, 10], ['cols', 'A-Stationary', 266, 29, 322, 8, 2, 10], ['rows', 'Output-Stationary', 271, 60, 257, 1, 9, 10], ['rows', 'B-Stationary', 225, 365, 38, 2, 8, 10], ['cols', 'B-Stationary', 81, 1, 9, 2, 8, 10], ['cols', 'A-Stationary', 1, 112, 432, 6, 4, 10], ['cols', 'Output-Stationary', 1, 432, 112, 7, 3, 10], ['cols', 'A-Stationary', 81, 125, 432, 7, 3, 10], ['cols', 'A-Stationary', 81, 128, 128, 9, 1, 10], ['rows', 'A-Stationary', 81, 81, 8, 9, 1, 10], ['cols', 'A-Stationary', 71, 473, 128, 3, 7, 10], ['cols', 'A-Stationary', 3822, 11, 15, 8, 2, 10], ['cols', 'B-Stationary', 81, 32, 81, 2, 8, 10], ['cols', 'B-Stationary', 79, 126, 448, 7, 3, 10], ['cols', 'Output-Stationary', 62, 588, 96, 7, 3, 10], ['cols', 'Output-Stationary', 1, 183, 539, 1, 9, 10], ['cols', 'Output-Stationary', 1, 753, 138, 5, 5, 10], ['cols', 'A-Stationary', 17, 183, 491, 6, 4, 10], ['cols', 'B-Stationary', 81, 184, 184, 7, 3, 10], ['cols', 'B-Stationary', 28, 559, 148, 8, 2, 10], ['rows', 'Output-Stationary', 4337, 18, 7, 8, 2, 10], ['cols', 'B-Stationary', 58, 139, 493, 7, 3, 10], ['cols', 'B-Stationary', 50, 519, 141, 7, 3, 10], ['rows', 'B-Stationary', 25, 1, 9, 3, 7, 10], ['cols', 'Output-Stationary', 1, 154, 675, 8, 2, 10], ['cols', 'Output-Stationary', 1, 623, 167, 6, 4, 10], ['cols', 'B-Stationary', 23, 118, 730, 4, 6, 10], ['cols', 'A-Stationary', 25, 224, 224, 5, 5, 10], ['rows', 'B-Stationary', 25, 25, 8, 8, 2, 10], ['cols', 'A-Stationary', 22, 698, 118, 3, 7, 10], ['rows', 'Output-Stationary', 625, 28, 28, 2, 8, 10], ['rows', 'B-Stationary', 25, 32, 25, 9, 1, 10], ['rows', 'A-Stationary', 13, 175, 559, 1, 9, 10], ['rows', 'Output-Stationary', 16, 697, 135, 3, 7, 10], ['cols', 'B-Stationary', 1, 396, 247, 4, 6, 10]]
@@ -220,7 +221,15 @@ def test_3():
 	print(supernet_layer_set.get_total_flops_including_extras())
 	print(flops_att_score_sparse / supernet_layer_set.get_total_flops_including_extras())
 
-test_3()
+def display_res():
+	flops = [1163.618304, 942.4614399999999, 856.9099520000001, 283.69464400000004, 895.6357100000001, 543.350656, 608.5595099999999, 584.70399, 468.75897599999996, 796.897152, 436.20190600000006, 663.8513820000001, 477.547192, 1231.6000219999999, 518.3666760000001, 378.831056, 677.626534, 422.548248, 862.4221439999999, 450.50328]
+	acc = [81.08399963378906, 78.41999816894531, 81.25999450683594, 75.78599548339844, 77.51200103759766, 77.6240005493164, 80.25599670410156, 75.88800048828125, 78.69200134277344, 80.06999969482422, 79.11799621582031, 78.30799865722656, 78.0999984741211, 79.10599517822266, 78.83399963378906, 76.03199768066406, 79.48400115966797, 78.8219985961914, 80.66199493408203, 78.71599578857422]
+	
+	plt.plot(flops, acc, '.')
+	plt.show()
+
+display_res()
+#test_3()
 #test()
 #gen_choices()
 #examine_nasvit_results()
