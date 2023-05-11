@@ -410,8 +410,10 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
 
 
         if config.TRAIN.CLIP_GRAD:
+            #print("here")
             # adaptive_clip_grad(model.named_parameters(), supernet_gradnorm)
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.TRAIN.CLIP_GRAD)
+            #print(grad_norm)
 
         optimizer.g_constraint = 1.8  
         optimizer.second_step(zero_grad=True)
