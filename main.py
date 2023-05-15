@@ -1,7 +1,8 @@
 import pickle
 
 from test_wrappers import AccelWrapperTest, AlgWrapperTest
-from NASViT_wrapper import NASViTWrapper
+#from NASViT_wrapper import NASViTWrapper
+from NASViT_wrapper_2 import NASViTWrapper2
 from fast_arch_wrapper import FastArchWrapper
 
 def run_random_search(accel, alg, calc_score, iterations, latency_boxes):
@@ -71,10 +72,10 @@ if __name__ == "__main__":
 		latency_boxes.append([ideal_min / clock_speed, ideal_max / clock_speed])
 	#print(latency_boxes)
 	
-	boxes = run_random_search(FastArchWrapper(), NASViTWrapper(), accuracy_calc_score, 100, latency_boxes)
+	boxes = run_random_search(FastArchWrapper(), NASViTWrapper2(), accuracy_calc_score, 2, latency_boxes)
 
 	print(boxes)
 	for b in boxes:
 		print(b[4], b[5], b[6], b[7])
-	with open("res_with_sparsity.pickle", 'wb') as out_file:
-		pickle.dump(boxes, out_file, pickle.HIGHEST_PROTOCOL)
+	#with open("res_with_sparsity.pickle", 'wb') as out_file:
+	#	pickle.dump(boxes, out_file, pickle.HIGHEST_PROTOCOL)

@@ -381,7 +381,7 @@ def model_to_layer_set(model):
 			
 			# multiply by value vectors
 			for i in range(layer_descrip["batch_size"] * layer_descrip["num_heads"]):
-				layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["in_tokens"], layer_descrip["feature_dim"] * layer_descrip["expand_ratio"], flags={"type":"attention", "part":"score * V"}))
+				layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["in_tokens"], layer_descrip["feature_dim"] * layer_descrip["expand_ratio"], sparsity=layer_descrip["sparsity"], flags={"type":"attention", "part":"score * V"}))
 			
 			# out MLP (DeiT and Transformer include this in MHA)
 			for i in range(layer_descrip["batch_size"]):
@@ -437,7 +437,7 @@ def model_to_layer_set(model):
 					# if neither Q nor K is compressed, then compute each head separately (improves tiling over overlapped heads)
 					for i in range(layer_descrip["num_heads"]):
 						#print(layer_descrip["in_tokens"], layer_descrip["feature_dim"], layer_descrip["in_tokens"])
-						layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["feature_dim"], layer_descrip["in_tokens"], sparsity=layer_descrip["sparsity"], flags={"type":"attention", "part":"score"}))
+						layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["feature_dim"], layer_descrip["in_tokens"], flags={"type":"attention", "part":"score"}))
 			
 			# V
 			for i in range(layer_descrip["batch_size"]):
@@ -460,16 +460,16 @@ def model_to_layer_set(model):
 			
 			# proj l & w
 			for i in range(layer_descrip["batch_size"]):
-				layers.append(Layer(layer_descrip["in_tokens"] ** 2, layer_descrip["num_heads"], layer_descrip["num_heads"], B_weights=True, flags={"type":"attention", "part":"proj_l"}))
+				layers.append(Layer(layer_descrip["in_tokens"] ** 2, layer_descrip["num_heads"], layer_descrip["num_heads"], B_weights=True, sparsity=layer_descrip["sparsity"], flags={"type":"attention", "part":"proj_l"}))
 				#layers.append(Layer(1, layer_descrip["num_heads"], layer_descrip["num_heads"], B_weights=True, flags={"type":"attention", "part":"proj_l"}))
-				layers.append(Layer(layer_descrip["in_tokens"] ** 2, layer_descrip["num_heads"], layer_descrip["num_heads"], B_weights=True, flags={"type":"attention", "part":"proj_w"}))
+				layers.append(Layer(layer_descrip["in_tokens"] ** 2, layer_descrip["num_heads"], layer_descrip["num_heads"], B_weights=True, sparsity=layer_descrip["sparsity"], flags={"type":"attention", "part":"proj_w"}))
 				#layers.append(Layer(1, layer_descrip["num_heads"], layer_descrip["num_heads"], B_weights=True, flags={"type":"attention", "part":"proj_w"}))
 			
 			# ignoring softmax
 			
 			# multiply by value vectors
 			for i in range(layer_descrip["batch_size"] * layer_descrip["num_heads"]):
-				layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["in_tokens"], layer_descrip["feature_dim"] * layer_descrip["expand_ratio"], sparsity=layer_descrip["sparsity"], flags={"type":"attention", "part":"score * V"}))
+				layers.append(Layer(layer_descrip["in_tokens"], layer_descrip["in_tokens"], layer_descrip["feature_dim"] * layer_descrip["expand_ratio"], flags={"type":"attention", "part":"score * V"}))
 			
 			# out MLP (DeiT and Transformer include this in MHA)
 			for i in range(layer_descrip["batch_size"]):
@@ -981,10 +981,10 @@ def subnet_to_model(subnet_config, batch_size=1):
 	return model
 
 def create_nasvit_smallest(batch_size=1, comp_size_q=1, comp_size_k=1, sparsity=0.0):
-	config = {'resolution': 192, 'width': [16, 16, 24, 32, 64, 112, 160, 208, 1792], 'depth': [1, 3, 3, 3, 3, 3, 3], 'kernel_size': [3, 3, 3, 3, 3, 3, 3], 'expand_ratio': [1, 4, 4, 4, 4, 6, 6]}
+	config = {'resolution': 192, 'width': [16, 16, 24, 32, 64, 112, 160, 208, 1792], 'depth': [1, 3, 3, 3, 3, 3, 3], 'kernel_size': [3, 3, 3, 3, 3, 3, 3], 'expand_ratio': [1, 4, 4, 4, 4, 6, 6], 'inv_sparsity': [-1, -1, -1, 1.0, 1.0, 1.0, 1.0]}
 	config["expansion_ratio"] = config["expand_ratio"]
 	config["use_se"] = [False, False, True, False, True, True, True]
-	return NASViT_subnet_to_model(config, batch_size, comp_size_q, comp_size_k, sparsity)
+	return NASViT_subnet_to_model(config, batch_size, comp_size_q, comp_size_k)
 
 def create_nasvit_random(batch_size=1):
 	config = {'resolution': 288, 'width': [24, 24, 32, 32, 72, 128, 160, 208, 1984], 'depth': [2, 5, 5, 5, 8, 4, 6], 'kernel_size': [5, 3, 3, 3, 3, 3, 3], 'expand_ratio': [1, 4, 6, 4, 6, 6, 6]}
@@ -1007,8 +1007,9 @@ def create_nasvit_supernet(batch_size=1, comp_size_q=1, comp_size_k=1, sparsity=
 		#"en_de_k" : [-1, -1, -1, -1, -1, -1, -1, -1],
 		"en_de_q" : [0, 0, 0, 0, 4, 4, 4, 4],
 		"en_de_k" : [0, 0, 0, 0, 4, 4, 4, 4],
+		'inv_sparsity': [-1, -1, -1, 1.0, 1.0, 1.0, 1.0]
 		}
-	return NASViT_subnet_to_model(subnet_config, batch_size, comp_size_q, comp_size_k, sparsity)
+	return NASViT_subnet_to_model(subnet_config, batch_size, comp_size_q, comp_size_k)
 
 def create_nasvit_from_config(config, batch_size=1, comp_size_q=1, comp_size_k=1):
 	config["expansion_ratio"] = config["expand_ratio"]

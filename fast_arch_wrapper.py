@@ -13,7 +13,7 @@ class FastArchWrapper:
 		self.clock_speed = clock_speed
 		self.bandwidth = bandwidth
 		
-		self.hw_iters = 2
+		self.hw_iters = 1
 		self.param_iters = 2
 	
 	# takes the model configuration, and returns [hw_config, params, latency, power] of a randomly-generated accelerator running that model
@@ -30,28 +30,38 @@ class FastArchWrapper:
 			hw = random.choice(es.generate_hardware_configs(self.total_num_PEs, self.total_memory, self.clock_speed, self.bandwidth))
 			params = []
 			total_cycles = 0
+			total_compute_cycles = 0
+			total_memory_cycles = 0
 			total_dram_accesses = 0
 			
 			for idx, (layer, count) in enumerate(layer_set.unique_layers):
 				
 				best_param = None
 				best_cycles = -1
+				compute_cycles = -1
+				memory_cycles = -1
 				best_dram_accesses = -1
 
 				all_params = es.generate_random_param(hw, layer, self.param_iters)			
 	
 				for p in range(self.param_iters):
 					param = all_params[p] #es.generate_random_param(hw, layer, 1)[0]
-					cycles, dram_accesses, _, _, _ = dw.run_layer(hw, param, layer, estimate=True)
-					
+					c, m, dram_accesses = dw.run_layer(hw, param, layer, estimate=True)
+					cycles = max(c, m)
 					if best_param == None or cycles < best_cycles:
 						best_param = param
+						compute_cycles = c
+						memory_cycles = m
 						best_cycles = cycles
 						best_dram_accesses = dram_accesses
 				
 				params.append(best_param)
-				total_cycles += best_cycles * count
+				#total_cycles += best_cycles * count
+				total_compute_cycles += compute_cycles * count
+				total_memory_cycles += memory_cycles * count
 				total_dram_accesses += best_dram_accesses * count
+			
+			total_cycles = max(total_compute_cycles, total_memory_cycles)
 			
 			if best_hw == None or total_cycles < best_cycles_overall:
 				best_hw = hw
@@ -69,7 +79,8 @@ class FastArchWrapper:
 	
 	# does a full evaluation of the given model run on the given accelerator (if this is the same as the latency & power generated earlier, can just pass the inputs directly to the outputs)
 	def full_eval(self, model_config, hw_config, param_config, prev_latency, prev_power):
-		model = bm.create_nasvit_from_config(model_config)
-		layer_set = bm.model_to_layer_set(model)
-		layer_set_final = es.evaluate_results(hw_config, param_config, layer_set)
-		return [layer_set_final.get_total_cycles() / self.clock_speed / 1000000000, layer_set_final.get_actual_memory_accesses] # TODO: actually run the full eval
+		return [prev_latency, prev_power]
+		#model = bm.create_nasvit_from_config(model_config)
+		#layer_set = bm.model_to_layer_set(model)
+		#layer_set_final = es.evaluate_results(hw_config, param_config, layer_set)
+		#return [layer_set_final.get_total_cycles() / self.clock_speed / 1000000000, layer_set_final.get_actual_memory_accesses] # TODO: actually run the full eval

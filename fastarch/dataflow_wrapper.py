@@ -95,11 +95,16 @@ def run_layer(hardware, params, layer, preload_cycles=0, pipeline_offloading=Fal
 
 def run_layer_set_no_pipelining(hardware, params, layer_set, estimate=False):
 	for idx, (layer, _) in enumerate(layer_set.unique_layers):
-		cycles, power, _, _, _ = run_layer(hardware, params[idx], layer, preload_cycles=0, pipeline_offloading=False, estimate=estimate)
+		if estimate:
+			compute_cycles, mem_cycles, power = run_layer(hardware, params[idx], layer, preload_cycles=0, pipeline_offloading=False, estimate=estimate)
+			cycles = max(compute_cycles, mem_cycles)
+		else:
+			cycles, power, _, _, _ = run_layer(hardware, params[idx], layer, preload_cycles=0, pipeline_offloading=False, estimate=estimate)
 		layer_set.update_layer_latency(layer, cycles)
 		layer_set.power += power
 		#layer_set.update_layer_dram_accesses(layer, dram_accesses)
 	print(layer_set.get_string_stats(hardware.num_PE_lanes * hardware.num_PEs_per_lane, hardware.on_chip_bandwidth, params))
+	return layer_set
 
 # hardware is from build_hardware.py
 # layer_set is from build_models_v2.py
@@ -246,14 +251,15 @@ def run_deit_tiny(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77):
 	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=bw, on_chip_bandwidth=100, total_sram_size=140*140*3)
 	model = models.get_DeiT_Tiny(1, comp_ratio, comp_ratio, sparsity)
 	layer_set = models.model_to_layer_set(model)
-	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.layers))]
-	for i in range(len(layer_set.layers)):
-		if isinstance(layer_set.layers[i], ch.ConvLayer):
+	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.unique_layers))]
+	for i in range(len(layer_set.unique_layers)):
+		if isinstance(layer_set.unique_layers[i][0], ch.ConvLayer):
 			params[i] = ["rows", "co", "ci", "y", "x", 120, 120, 5, 8, "x", "y", "ci", "kx", "ky", "co", 7, 1, 3, 4, 1, 1]
 	if pipelining:
 		run_layer_set(hardware, params, layer_set)
 	else:
-		run_layer_set_no_pipelining(hardware, params, layer_set)
+		res = run_layer_set_no_pipelining(hardware, params, layer_set, estimate=True)
+		return res
 	print("finished deit_tiny:", pipelining, comp_ratio, sparsity, bw)
 
 def run_deit_small(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77):
@@ -314,27 +320,36 @@ def run_levit_256(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77, ViTCoD=F
 		run_layer_set_no_pipelining(hardware, params, layer_set)
 	print("finished levit_256:", pipelining, comp_ratio, sparsity, bw)
 
-def run_nasvit_supernet(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77):
+def run_nasvit_supernet(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77, estimate=False):
 	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=bw, on_chip_bandwidth=10, total_sram_size=140*140*3)
 	model = models.create_nasvit_supernet(1, comp_ratio, comp_ratio, sparsity)
 	layer_set = models.model_to_layer_set(model)
-	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.layers))]
+	#params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.layers))]
+	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.unique_layers))]
+	for i in range(len(layer_set.unique_layers)):
+		if isinstance(layer_set.unique_layers[i][0], ch.ConvLayer):
+			params[i] = ["rows", "co", "ci", "y", "x", 120, 120, 5, 8, "x", "y", "ci", "kx", "ky", "co", 7, 1, 3, 4, 1, 1]
 	if pipelining:
-		run_layer_set(hardware, params, layer_set)
+		res = run_layer_set(hardware, params, layer_set, estimate=estimate)
 	else:
-		run_layer_set_no_pipelining(hardware, params, layer_set)
+		res = run_layer_set_no_pipelining(hardware, params, layer_set, estimate=estimate)
 	print("finished nasvit supernet:", pipelining, comp_ratio, sparsity, bw)
+	return res
 
-def run_nasvit_smallest(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77):
+def run_nasvit_smallest(pipelining=True, comp_ratio=1.0, sparsity=0.0, bw=77, estimate=False):
 	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=bw, on_chip_bandwidth=10, total_sram_size=140*140*3)
 	model = models.create_nasvit_smallest(1, comp_ratio, comp_ratio, sparsity)
 	layer_set = models.model_to_layer_set(model)
-	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.layers))]
+	params = [['rows', 'Output-Stationary', 1072, 134, 134, 10, 1, 10] for i in range(len(layer_set.unique_layers))]
+	for i in range(len(layer_set.unique_layers)):
+		if isinstance(layer_set.unique_layers[i][0], ch.ConvLayer):
+			params[i] = ["rows", "co", "ci", "y", "x", 120, 120, 5, 8, "x", "y", "ci", "kx", "ky", "co", 7, 1, 3, 4, 1, 1]
 	if pipelining:
-		run_layer_set(hardware, params, layer_set)
+		res = run_layer_set(hardware, params, layer_set, estimate=estimate)
 	else:
-		run_layer_set_no_pipelining(hardware, params, layer_set)
-	print("finished nasvit supernet:", pipelining, comp_ratio, sparsity, bw)
+		res = run_layer_set_no_pipelining(hardware, params, layer_set, estimate=estimate)
+	print("finished nasvit smallest:", pipelining, comp_ratio, sparsity, bw)
+	return res
 
 #def run_levit_128():
 #	hardware = hw.Hardware(num_PE_lanes=8, num_PEs_per_lane=64, num_RFs_per_PE=11, size_RF=10, off_chip_bandwidth=77, on_chip_bandwidth=10, total_sram_size=140*140*3)

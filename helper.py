@@ -7,7 +7,24 @@ import fastarch.evolutionary_search_v3 as es
 import fastarch.dataflow_estimator_conv as dec
 import fastarch.accel_only_evolutionary_search as aoes
 
-aoes.test()
+#model = bm.create_nasvit_supernet(1, 1.0, 1.0, 0.0) #, ViTCoD=True)
+model = bm.get_LeViT_128(1, 1.0, 1.0, 0.0, ViTCoD=True)
+layer_set = bm.model_to_layer_set(model)
+flops = 0
+for layer in layer_set.layers:
+	if layer.flags["type"] == "attention" and (layer.flags["part"] == "score"): # or layer.flags["part"] == "score * V"):
+		flops += layer.get_flops_including_extras()
+print(flops / layer_set.get_total_flops_including_extras())
+
+layer_set = dw.run_nasvit_smallest(pipelining=False, estimate=True)
+#layer_set = dw.run_deit_tiny(pipelining=False)
+cycles = 0
+for layer in layer_set.layers:
+	if layer.flags["type"] == "attention" and (layer.flags["part"] == "proj_w" or layer.flags["part"] == "proj_l"):
+		cycles += layer.get_actual_cycles()
+print("Cycles from Q*K:", cycles)
+print("Total cycles:", layer_set.get_total_cycles())
+#aoes.test()
 #dec.test()
 #model = bm.get_DeiT_Tiny(1, 1.0, 1.0, 0.0)
 #es.search_model(model, 50, 1)
