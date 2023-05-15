@@ -243,6 +243,17 @@ class DynamicWindowAttention(MyModule):
             return self.masks[2]
         return self.masks[3]
 
+    def masked_softmax(self, attn, mask, dim=1):
+        # taken from a discussion post on pytorch forum
+        masked_attn = attn * mask #.float()
+        max_attn = torch.max(masked_attn, dim=dim, keepdim=True)[0]
+        exps = torch.exp(masked_attn - max_attn)
+        masked_exps = exps * mask.float()
+        masked_sums = masked_exps.sum(dim, keepdim=True)
+        zeros = (masked_sums == 0)
+        masked_sums += zeros.float()
+        return masked_exps / masked_sums
+
     def forward(self, x, mask=None):
         """
         Args:
@@ -275,20 +286,54 @@ class DynamicWindowAttention(MyModule):
 
         attn = self.proj_l(attn.permute(0,2,3,1), out_features=C // self.head_dim).permute(0,3,1,2)
 
+        # generate att mask for this architecture, based just on this current batch size
+        assert mask is None
+        #with torch.no_grad():
+        #    att_map_scores = torch.sum(self.softmax(attn), 0)
+        #    curr_mask = torch.empty(att_map_scores.shape, device="cuda", dtype=torch.bool)
+        #    for head_idx in range(att_map_scores.shape[0]):
+        #        head = att_map_scores[head_idx]
+        #        vals, _ = torch.sort(head.view(-1))
+        #        val = vals[int(head.shape[0] * head.shape[1] * self.inv_sparsity)-1]
+            #val, idx = torch.kthvalue(head, int(head.shape[0] * head.shape[1] * self.inv_sparsity))
+        #        curr_mask[head_idx] = (head > val).bool()
+            #print(curr_mask[head_idx][0][0])
+            #x, y = head.shape
+            #head = head.view(-1)
+            #s, i = torch.sort(head)
+            #index = int(s.shape[0] * (1 - self.inv_sparsity))
+            #for it in range(len(i)):
+            #    if it < index:
+            #        head[i[it]] = 0
+            #    else:
+            #        head[i[it]] = 1
+            #head = head.view(x, y)
+
+        #    curr_mask = curr_mask.repeat(B_, 1, 1, 1)
+
+        # old way using pregenerated att masks
         curr_mask = self.select_appropriate_mask(self.curr_resolution, C) #attn.shape)
         curr_mask = curr_mask.repeat(B_, 1, 1, 1)
         #print(curr_mask.shape)
         #if curr_mask.shape[2] == 9:
         #    print(curr_mask[0][0])
-        attn = attn.masked_fill(curr_mask == 0, float('-1e-8'))
+        #attn = attn.masked_fill(curr_mask, float('-1e8'))
+        #attn = self.masked_softmax(attn, curr_mask, dim=-1)
 
+        attn.masked_fill_(curr_mask==0, float('-inf'))
+        attn = self.softmax(attn)
+        attn = attn.masked_fill(curr_mask==0, 0)
+        # check if any of the outputs here are inf or NaN?
         if mask is not None:
             nW = mask.shape[0]
             attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
             attn = self.softmax(attn)
         else:
-            attn = self.softmax(attn)
+            pass
+            #attn = self.softmax(attn)
+
+        #attn = attn.masked_fill(curr_mask, 0)
 
 #        if self.att_map_scores == None or self.att_map_scores.shape[0] != attn.shape[1] or self.att_map_scores.shape[1] != attn.shape[2] or self.att_map_scores.shape[2] != attn.shape[3]:
             #print(attn.shape)
